@@ -17,33 +17,38 @@
   * `docs/PRODUCT.md` -> `Calendar-Daily-Grid-View`
   * UI Component -> `CalendarGrid`, `DailyTransactionSheet`
 
-### [FEATURE: Rapid-Transaction-Keypad] | Aliases: quick entry, calculator input, category picker, expense logger
-> **1-Line Summary:** A dedicated calculator-style numeric pad for logging amounts, instantly linked to category icons, account selection, and optional notes.
+### [FEATURE:Rapid-Transaction-Keypad] | Aliases: quick entry, calculator input, category picker, expense logger
+> **1-Line Summary:** A dedicated calculator-style numeric pad for logging amounts, instantly linked to category icons, account selection, transfers, and optional notes.
 * **User Intention (Non-Negotiable):** Frictionless entry under 5 seconds per transaction: Amount -> Category -> Account -> Note/Description.
-* **Visual / UI Behavior:** Bottom sheet or full screen with a built-in math keypad (addition/subtraction), high-contrast category icons, and payment method chips (Cash, Bank, bKash, Nagad, Card).
+* **Visual / UI Behavior:** Bottom sheet or modal with a built-in safe math keypad (`+`, `-`, `×`, `÷` without `eval`), high-contrast category pills, payment method chips (Cash, Bank, bKash, Nagad, Card), and Account-to-Account Transfer mode.
 * **Code Anchors (Grep Targets):**
-  * UI Component -> `TransactionKeypad`, `CategorySelector`
+  * UI Component -> `src/components/TransactionKeypad.vue`
+  * Transfer Logic -> `src/modules/accounts/transferEngine.ts` -> `executeAccountTransfer`
 
 ### [FEATURE: Account-And-Asset-Hierarchy] | Aliases: accounts, wallet, bank accounts, mobile financial services, cards
 > **1-Line Summary:** Hierarchical account management supporting cash wallets, local bank accounts, mobile financial services (MFS), credit cards, and fixed assets.
 * **User Intention (Non-Negotiable):** Accurately mirror local Bangladeshi payment methods (Cash, bKash, Nagad, Rocket, Bank Accounts, Credit Cards) with seamless account-to-account transfers and balance tracking.
-* **Visual / UI Behavior:** Grouped list under Assets, Liabilities, and Accounts; shows live balances and transfer shortcuts.
+* **Visual / UI Behavior:** Grouped list under Assets, Liabilities, and Investments; shows live balances and transfer shortcuts (`executeAccountTransfer`).
 * **Code Anchors (Grep Targets):**
-  * Data Model -> `Account`, `AccountType`, `TransferEngine`
+  * `src/modules/accounts/manager.ts` -> `buildAccountsHierarchy`
+  * `src/modules/accounts/transferEngine.ts` -> `executeAccountTransfer`, `isLiabilityAccount`
 
 ### [FEATURE: Sanchaypatra-Scheme-Tracker] | Aliases: sanchaypatra, savings certificate, fixed deposit, fdr, profit schedule
 > **1-Line Summary:** Specialized investment tracker for government savings certificates (Sanchaypatra) and fixed deposits with automated profit schedules and tax deduction tracking.
-* **User Intention (Non-Negotiable):** Replace complex Wall Street stock tracking with a practical local investment manager that records principal, purchase date, tenure/maturity, slab interest rate, payout frequency (monthly/quarterly), and auto-deducted Advance Income Tax (AIT), generating scheduled profit reminders or auto-ledger entries.
+* **User Intention (Non-Negotiable):** Replace complex Wall Street stock tracking with a practical local investment manager that records principal, purchase date, tenure/maturity, slab interest rate, payout frequency (monthly/quarterly/half-yearly), and auto-deducted Advance Income Tax (AIT), generating scheduled profit reminders or auto-ledger entries.
 * **Visual / UI Behavior:** Dedicated "Savings Schemes & Assets" section showing certificate type, invested principal, accrued/expected payout date, and maturity countdown.
 * **Code Anchors (Grep Targets):**
-  * Calculation Module -> `SanchaypatraCalculator`, `ProfitScheduleEngine`
+  * `src/modules/sanchaypatra/calculator.ts` -> `calculateSanchaypatraProfit`, `generatePayoutScheduleDates`
+  * `src/modules/sanchaypatra/schemes.ts` -> `BANGLADESH_SANCHAYPATRA_SCHEMES`
 
-### [FEATURE: Cross-Platform-Free-Sync] | Aliases: phone pc sync, google drive sync, mega sync, sqlite backup
-> **1-Line Summary:** Free, zero-subscription data synchronization between Realbyte Android and Windows PC using Google Drive or Mega Drive SQLite backups.
-* **User Intention (Non-Negotiable):** Keep using the Realbyte mobile app for fast on-the-go logging with automated backup to Google Drive / Mega, while the Windows PC Power App automatically syncs the same database for deep desktop management and Sanchaypatra scheduling.
-* **Visual / UI Behavior:** Realbyte app triggers periodic Google Drive backup; PC Power App monitors the synced local cloud drive folder, reloading changes smoothly.
+### [FEATURE: Cross-Platform-Free-Sync] | Aliases: phone pc sync, google drive sync, mega sync, sqlite backup, pc manager wifi sync
+> **1-Line Summary:** Dual-path, collision-free synchronization between Realbyte Android and Windows PC via both Realbyte's built-in Wi-Fi PC Manager server and Google Drive / Mega SQLite backups (`money_android.sqlite`).
+* **User Intention (Non-Negotiable):** Keep using the Realbyte mobile app for fast on-the-go logging while syncing seamlessly through either local Wi-Fi PC Manager (port 10000) or SQLite vault backups (`INOUTCOME`, `ASSETS`, `ZCATEGORY`) without duplicate records, balance collisions, or database lock corruption.
+* **Visual / UI Behavior:** Interactive Synchronization Bridges in Settings allowing 1-click Wi-Fi PC Manager sync and SQLite Vault backup processing, outputting a live `SyncReconciliationReport` (Inserted, Updated via LWW, Skipped Duplicates, and WAL verification).
 * **Code Anchors (Grep Targets):**
-  * `src/modules/sync/` -> `DriveWatcher`, `SQLiteSyncCoordinator`
+  * `src/modules/database/sqliteVault.ts` -> `createSQLiteConnection`, `parseRealbyteSqliteVault`
+  * `src/modules/sync/syncCoordinator.ts` -> `reconcileRealbyteSync`, `computeTransactionFingerprint`
+  * `src/modules/realbyte/client.ts` -> `RealbytePcManagerClient`, `normalizePcManagerData`
 
 ### [FEATURE: Dual-Budget-Philosophy-Toggle] | Aliases: budget mode toggle, cashflow vs envelope, realbyte mode, actual budget mode
 > **1-Line Summary:** Settings toggle switching between "Cashflow & Calendar Ledger" (Realbyte default) and "Zero-Based Envelope Allocation" (Actual Budget mode).
@@ -62,18 +67,18 @@
   * `src/components/StatsTab.vue` -> `stats`
 
 ### [FEATURE: Bank-Statement-Importer] | Aliases: qif import, csv import, ofx import, statement parser
-> **1-Line Summary:** Multi-format bank statement parser adapted from Actual Budget supporting QIF, OFX, and Bangladeshi CSV formats.
-* **User Intention (Non-Negotiable):** Enable bulk statement import from local bank accounts (City Bank, BRAC Bank, Sonali Bank) without manual line-by-line logging.
-* **Visual / UI Behavior:** Importer utility parsing files and generating structured transaction arrays.
+> **1-Line Summary:** Multi-format bank statement parser adapted from Actual Budget supporting QIF, OFX 1.x/2.x, and Bangladeshi CSV formats with deterministic deduplication.
+* **User Intention (Non-Negotiable):** Enable bulk statement import from local bank accounts (City Bank, BRAC Bank, Sonali Bank) without manual line-by-line logging or duplicate records.
+* **Visual / UI Behavior:** Interactive Statement Importer modal parsing CSV, QIF, and OFX files, applying auto-categorization rules, and reporting inserted vs. skipped duplicate transactions.
 * **Code Anchors (Grep Targets):**
+  * `src/modules/importers/ofxParser.ts` -> `parseOfxStatement`, `mapParsedStatementToTransactions`
   * `src/modules/importers/qifParser.ts` -> `parseQifContent`
   * `src/modules/importers/csvParser.ts` -> `parseCsvStatement`
+  * `src/modules/rules/engine.ts` -> `applyRulesToTransaction`
 
----
-
-## 3. Planned Features & App-Merge Wishlist
-
-### [WISHLIST: Double-Entry-Ledger-Bridge] | Aliases: double entry, accounting tutor, trial balance, beancount export
-> **1-Line Summary:** Optional double-entry journal view or automated Beancount/GnuCash export to help the user learn and practice true accounting.
-* **User Intention:** Ensure mathematical ledger integrity (Assets = Liabilities + Equity) without overwhelming daily fast logging.
-* **Target Integration Point:** Connects to transaction commit pipeline, auto-generating balanced debit/credit journal entries in the background.
+### [FEATURE: Double-Entry-Ledger-Bridge] | Aliases: double entry, accounting tutor, trial balance, beancount export
+> **1-Line Summary:** Automated double-entry journal engine and Beancount plain-text exporter maintaining strict trial balance integrity (`Debits = Credits`).
+* **User Intention:** Ensure mathematical ledger integrity (`Assets = Liabilities + Equity`) and support plain-text Beancount accounting exports without slowing down daily fast logging.
+* **Visual / UI Behavior:** Trial Balance verification badge and live Beancount ledger export card in Settings.
+* **Code Anchors (Grep Targets):**
+  * `src/modules/ledger/doubleEntryBridge.ts` -> `generateDoubleEntryJournal`, `verifyLedgerTrialBalance`, `exportJournalToBeancount`

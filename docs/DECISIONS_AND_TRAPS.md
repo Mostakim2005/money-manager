@@ -152,12 +152,13 @@ flowchart LR
 
 ## 2. Do-Not-Touch Engineering Landmines (Traps)
 
-### [TRAP: Raw-SQLite-Concurrency-And-Journal-Locking] | Aliases: sqlite locking, db corruption, wal mode
-> **1-Line Summary:** Writing to SQLite files across devices without Write-Ahead Logging (WAL) and atomic transactions causes file corruption.
-* **Strict Rule:** **NEVER** perform direct multi-device writes or sync raw SQLite database files while the database connection is open without enabling `PRAGMA journal_mode=WAL;` and wrapping sync updates inside atomic transaction boundaries (`BEGIN IMMEDIATE / COMMIT`).
-* **Why This Trap Exists (Plain English):** SQLite locks the database file during writes. Syncing an active database file over cloud or local network while in `DELETE` or `TRUNCATE` journal mode leads to "database disk image is malformed" crashes.
+### [TRAP: Raw-SQLite-Concurrency-And-Journal-Locking] | Aliases: sqlite locking, db corruption, wal mode, dual sync collision
+> **1-Line Summary:** Writing to SQLite files across devices without Write-Ahead Logging (WAL), atomic transactions, and deterministic fingerprint deduplication causes file corruption or duplicate transactions.
+* **Strict Rule:** **NEVER** perform direct multi-device writes or sync raw SQLite database files while the database connection is open without enabling `PRAGMA journal_mode=WAL;` and wrapping sync updates inside atomic transaction boundaries (`BEGIN IMMEDIATE / COMMIT`). Furthermore, **ALWAYS** pass incoming records from both Realbyte PC Manager (Wi-Fi) and SQLite backup vaults (`money_android.sqlite`) through `reconcileRealbyteSync` (`externalUid` + `computeTransactionFingerprint` + Last-Write-Wins `updatedAt`) so switching between Wi-Fi sync and SQLite backup files never produces duplicate transactions or balance collisions.
+* **Why This Trap Exists (Plain English):** SQLite locks the database file during writes, and syncing the same phone data via both Wi-Fi HTTP and SQLite backup files without shared UID/fingerprint reconciliation would otherwise double-count transactions and corrupt account balances.
 * **Protected Code Anchors (Grep Targets):**
-  * `src/modules/database/` -> `initializeDatabase`, `enableWalMode`
+  * `src/modules/database/sqliteVault.ts` -> `createSQLiteConnection`, `parseRealbyteSqliteVault`
+  * `src/modules/sync/syncCoordinator.ts` -> `reconcileRealbyteSync`, `computeTransactionFingerprint`
 
 ---
 

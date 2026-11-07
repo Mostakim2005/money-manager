@@ -117,11 +117,32 @@ sequenceDiagram
 
 ---
 
-### [SUBSYSTEM: Cross-Device-Local-Sync] | Aliases: sync protocol, wifi sync, webdav sync, cloud delta
-> **1-Line Summary:** Peer-to-peer or lightweight cloud delta synchronizer keeping phone and PC databases aligned without subscription servers.
-* **How It Works (Plain English):** Transactions are assigned a monotonic version or UUID and modified timestamp. When Phone and PC connect on the same local Wi-Fi network (or via WebDAV / free cloud API), the sync engine exchanges deltas, resolves conflicts via last-write-wins (LWW) per transaction ID, and writes updates in a single database transaction.
+### [SUBSYSTEM: Cross-Device-Local-Sync] | Aliases: sync protocol, wifi sync, pc manager sync, sqlite backup vault, collision-free deduplication
+> **1-Line Summary:** Dual-pathway collision-free synchronizer merging Realbyte PC Manager Wi-Fi HTTP feeds and `money_android.sqlite` backup vaults with zero duplicates.
+* **How It Works (Plain English):** Users can sync their Realbyte Android app to the PC Power App through two interchangeable pathways: (1) Realbyte's built-in Wi-Fi PC Manager server (`http://<phoneIp>:10000/moneyBook`) and (2) the SQLite backup vault (`money_android.sqlite` synced via Google Drive / Mega). Both sources normalize records into a shared schema with `externalUid` (`rb-uid-<Z_PK>`) and a deterministic content fingerprint (`computeTransactionFingerprint`). When `reconcileRealbyteSync` runs inside a WAL-verified atomic transaction, it matches records across both pathways by `externalUid`, `id`, or fingerprint, resolving updates via Last-Write-Wins (`updatedAt` / `UTIME`) and preventing duplicate transactions or double-counted account balances.
+* **Data Flow Diagram:**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Phone as Realbyte Android App
+    participant Wifi as PC Manager HTTP (Port 10000)
+    participant Vault as SQLite Backup (money_android.sqlite)
+    participant Reconciler as reconcileRealbyteSync
+    participant Store as PC Ledger Store
+
+    Phone->>Wifi: Stream JSON (/account, /category, /ledger)
+    Phone->>Vault: Export INOUTCOME, ASSETS, ZCATEGORY tables
+    Wifi->>Reconciler: normalizePcManagerData (rb-uid + fingerprint)
+    Vault->>Reconciler: parseRealbyteSqliteVault (WAL + Atomic Txn)
+    Reconciler->>Reconciler: Match by externalUid OR Fingerprint + LWW Timestamp
+    Reconciler-->>Store: Commit New/Updated Records & Skip Duplicates
+```
+
 * **Code Anchors (Grep Targets):**
-  * `src/modules/sync/` -> `syncWithPeer`, `resolveDeltas`
+  * `src/modules/sync/syncCoordinator.ts` -> `reconcileRealbyteSync`, `computeTransactionFingerprint`
+  * `src/modules/database/sqliteVault.ts` -> `createSQLiteConnection`, `parseRealbyteSqliteVault`
+  * `src/modules/realbyte/client.ts` -> `RealbytePcManagerClient`, `normalizePcManagerData`
 
 ---
 

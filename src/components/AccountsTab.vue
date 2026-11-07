@@ -9,12 +9,22 @@
           <div class="text-xs font-semibold text-slate-400 tracking-wider uppercase">Net Worth Total</div>
           <div class="text-3xl font-extrabold text-white mt-1">{{ formatBDT(overview.netWorth) }}</div>
         </div>
-        <button
-          @click="showAddModal = true"
-          class="px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs shadow-lg transition-all"
-        >
-          + Add Account
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            @click="showTransferModal = true"
+            class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-lg transition-all flex items-center gap-1.5"
+          >
+            <span>⇄</span> Transfer
+          </button>
+          <button
+            type="button"
+            @click="showAddModal = true"
+            class="px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs shadow-lg transition-all"
+          >
+            + Add Account
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-3 gap-2 pt-3 border-t border-slate-700/60 text-center">
@@ -105,6 +115,15 @@
         </div>
       </div>
     </div>
+
+    <!-- Quick Account Transfer Modal (Transfer Mode) -->
+    <TransactionKeypad
+      v-model="showTransferModal"
+      initialType="transfer"
+      :categories="store.categories"
+      :accounts="store.accounts"
+      @save="handleTransferSave"
+    />
   </div>
 </template>
 
@@ -112,10 +131,12 @@
 import { ref, computed } from 'vue';
 import { useMoneyStore } from '../store';
 import { buildAccountsHierarchy } from '../modules/accounts/manager';
-import { AccountType } from '../types';
+import { AccountType, TransactionType } from '../types';
+import TransactionKeypad from './TransactionKeypad.vue';
 
 const store = useMoneyStore();
 const showAddModal = ref(false);
+const showTransferModal = ref(false);
 
 const newAcc = ref({
   name: '',
@@ -128,6 +149,30 @@ const newAcc = ref({
 const overview = computed(() => {
   return buildAccountsHierarchy(store.accounts, store.totalSanchaypatraPrincipal);
 });
+
+function handleTransferSave(payload: {
+  amount: number;
+  type: TransactionType;
+  categoryId: string;
+  accountId: string;
+  targetAccountId?: string;
+  date: string;
+  time: string;
+  note: string;
+  description: string;
+}) {
+  store.addTransaction({
+    amount: payload.amount,
+    type: payload.type,
+    categoryId: payload.categoryId,
+    accountId: payload.accountId,
+    targetAccountId: payload.targetAccountId,
+    date: payload.date,
+    time: payload.time,
+    note: payload.note || payload.description,
+    description: payload.description
+  });
+}
 
 function handleCreateAccount() {
   if (!newAcc.value.name.trim()) return;

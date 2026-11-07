@@ -83,13 +83,22 @@
 
     <!-- Day Transaction Sheet (Shown when day is tapped) -->
     <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 shadow-xl">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="font-bold text-white text-base">
-          Transactions on {{ selectedDateStr }}
-        </h3>
-        <span class="text-xs px-2.5 py-1 rounded-full bg-slate-700 text-slate-300 font-medium">
-          {{ selectedDayTransactions.length }} recorded
-        </span>
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <h3 class="font-bold text-white text-base">
+            Transactions on {{ selectedDateStr }}
+          </h3>
+          <span class="text-xs text-slate-400">
+            {{ selectedDayTransactions.length }} recorded
+          </span>
+        </div>
+        <button
+          type="button"
+          @click="showKeypad = true"
+          class="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs shadow-md transition-all flex items-center gap-1"
+        >
+          <span>+</span> Log on {{ selectedDateStr }}
+        </button>
       </div>
 
       <div v-if="selectedDayTransactions.length === 0" class="text-center py-6 text-slate-500 text-sm">
@@ -104,35 +113,89 @@
         >
           <div class="flex items-center gap-3">
             <div
+              v-if="txn.type === 'transfer'"
+              class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white bg-sky-600 text-base"
+            >
+              ⇄
+            </div>
+            <div
+              v-else
               class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white"
               :style="{ backgroundColor: getCategory(txn.categoryId)?.color || '#64748B' }"
             >
               {{ getCategory(txn.categoryId)?.name.charAt(0) || '?' }}
             </div>
             <div>
-              <div class="text-sm font-semibold text-white">{{ getCategory(txn.categoryId)?.name }}</div>
-              <div class="text-xs text-slate-400">{{ getAccount(txn.accountId)?.name }} <span v-if="txn.note">• {{ txn.note }}</span></div>
+              <div v-if="txn.type === 'transfer'" class="text-sm font-semibold text-sky-400">
+                ⇄ Transfer: {{ getAccount(txn.accountId)?.name }} → {{ getAccount(txn.targetAccountId)?.name }}
+              </div>
+              <div v-else class="text-sm font-semibold text-white">
+                {{ getCategory(txn.categoryId)?.name }}
+              </div>
+              <div class="text-xs text-slate-400">
+                <span v-if="txn.type !== 'transfer'">{{ getAccount(txn.accountId)?.name }}</span>
+                <span v-if="txn.note"> • {{ txn.note }}</span>
+              </div>
             </div>
           </div>
 
           <div class="text-right">
-            <div class="text-sm font-bold" :class="txn.type === 'income' ? 'text-emerald-400' : 'text-rose-400'">
-              {{ txn.type === 'income' ? '+' : '-' }}{{ formatBDT(txn.amount) }}
+            <div
+              class="text-sm font-bold"
+              :class="txn.type === 'income' ? 'text-emerald-400' : txn.type === 'expense' ? 'text-rose-400' : 'text-sky-400'"
+            >
+              {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '⇄ ' }}{{ formatBDT(txn.amount) }}
             </div>
             <div class="text-[10px] text-slate-500">{{ txn.time || '12:00' }}</div>
           </div>
         </div>
       </div>
     </div>
+
+    <!-- Quick Transaction Keypad Modal Component -->
+    <TransactionKeypad
+      v-model="showKeypad"
+      :initialDate="selectedDateStr"
+      :categories="store.categories"
+      :accounts="store.accounts"
+      @save="handleKeypadSave"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 import { useMoneyStore } from '../store';
 import { buildMonthCalendarMatrix } from '../modules/calendar/matrix';
+import { TransactionType } from '../types';
+import TransactionKeypad from './TransactionKeypad.vue';
 
 const store = useMoneyStore();
+const showKeypad = ref(false);
+
+function handleKeypadSave(payload: {
+  amount: number;
+  type: TransactionType;
+  categoryId: string;
+  accountId: string;
+  targetAccountId?: string;
+  date: string;
+  time: string;
+  note: string;
+  description: string;
+}) {
+  store.addTransaction({
+    amount: payload.amount,
+    type: payload.type,
+    categoryId: payload.categoryId,
+    accountId: payload.accountId,
+    targetAccountId: payload.targetAccountId,
+    date: payload.date,
+    time: payload.time,
+    note: payload.note || payload.description,
+    description: payload.description
+  });
+}
 
 const monthNames = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -188,11 +251,13 @@ function changeMonth(delta: number) {
   store.selectedDate = `${y}-${String(m).padStart(2, '0')}-01`;
 }
 
-function getCategory(id: string) {
+function getCategory(id?: string) {
+  if (!id) return undefined;
   return store.categories.find(c => c.id === id);
 }
 
-function getAccount(id: string) {
+function getAccount(id?: string) {
+  if (!id) return undefined;
   return store.accounts.find(a => a.id === id);
 }
 

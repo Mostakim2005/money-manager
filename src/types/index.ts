@@ -2,8 +2,15 @@ export type TransactionType = 'income' | 'expense' | 'transfer';
 
 export type BudgetMode = 'cashflow_ledger' | 'envelope_allocation';
 
+export type ThemeMode = 'dark' | 'light';
+
+export type SyncSource = 'local' | 'realbyte_pc_manager' | 'realbyte_sqlite_backup' | 'bank_import';
+
 export interface Transaction {
   id: string;
+  externalUid?: string; // Realbyte INOUTCOME / ZINOUTCOME UID or Z_PK
+  fingerprint?: string; // Deterministic hash for zero-collision deduplication
+  syncSource?: SyncSource;
   date: string; // ISO YYYY-MM-DD
   time?: string; // HH:mm
   amount: number;
@@ -11,9 +18,9 @@ export interface Transaction {
   categoryId: string;
   subcategoryId?: string;
   accountId: string; // Source account (e.g. Bank, bKash, Cash)
-  targetAccountId?: string; // For transfers
+  targetAccountId?: string; // Destination account for transfers
   note?: string;
-  description?: string;
+  description?: string; // Payee or statement narration
   createdAt: number;
   updatedAt: number;
 }
@@ -22,6 +29,7 @@ export type AccountType = 'cash' | 'bank' | 'mfs' | 'credit_card' | 'asset' | 'l
 
 export interface Account {
   id: string;
+  externalUid?: string; // Realbyte ASSETS UID
   name: string;
   type: AccountType;
   balance: number;
@@ -29,16 +37,18 @@ export interface Account {
   accountNumber?: string;
   color?: string;
   icon?: string;
+  updatedAt?: number;
 }
 
 export interface Category {
   id: string;
+  externalUid?: string; // Realbyte ZCATEGORY UID
   name: string;
   type: 'income' | 'expense';
   icon?: string;
   color?: string;
   subcategories?: string[];
-  budgetMonthlyAllocated?: number; // Used only when BudgetMode is 'envelope_allocation'
+  budgetMonthlyAllocated?: number; // Used when BudgetMode is 'envelope_allocation'
 }
 
 export interface SanchaypatraScheme {
@@ -49,7 +59,7 @@ export interface SanchaypatraScheme {
   issueDate: string; // YYYY-MM-DD
   maturityDate: string; // YYYY-MM-DD
   tenureYears: number;
-  payoutFrequencyMonths: number; // 1 for monthly, 3 for quarterly
+  payoutFrequencyMonths: number; // 1 for monthly, 3 for quarterly, 6 for half-yearly
   slabGrossRate: number; // e.g. 0.1128 (11.28%)
   aitRate: number; // 0.05 (5%) or 0.10 (10%)
   netPeriodicProfit: number;
@@ -62,6 +72,7 @@ export interface DailySummary {
   dayNumber: number;
   income: number;
   expense: number;
+  transferTotal?: number;
   net: number;
   transactionCount: number;
 }
@@ -88,4 +99,30 @@ export interface Rule {
     field: 'categoryId' | 'subcategoryId' | 'accountId';
     value: string;
   }[];
+}
+
+export interface SyncReconciliationReport {
+  source: 'realbyte_pc_manager' | 'realbyte_sqlite_backup';
+  timestamp: number;
+  insertedTransactions: number;
+  updatedTransactions: number;
+  skippedDuplicates: number;
+  mergedAccounts: number;
+  mergedCategories: number;
+  walModeVerified: boolean;
+}
+
+export interface JournalPosting {
+  accountName: string;
+  debitBDT: number;
+  creditBDT: number;
+}
+
+export interface DoubleEntryJournalEntry {
+  id: string;
+  transactionId: string;
+  date: string;
+  narration: string;
+  postings: JournalPosting[];
+  balanced: boolean;
 }
