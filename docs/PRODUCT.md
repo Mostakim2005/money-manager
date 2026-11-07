@@ -51,7 +51,23 @@
 * **Visual / UI Behavior:** Toggle switch in Settings under "Budgeting Philosophy". In Cashflow mode (default), categories simply track monthly spent sums on the calendar grid. In Envelope mode, category headers show monthly allocated pools, remaining balances, and progress bars.
 * **Code Anchors (Grep Targets):**
   * `src/types/index.ts` -> `BudgetMode`
-  * UI Component -> `BudgetModeSelector`, `CategoryEnvelopeBar`
+  * `src/components/SettingsTab.vue` -> `store.budgetMode`
+
+### [FEATURE: Period-Visual-Analytics] | Aliases: category charts, monthly trends, cashflow breakdown, savings rate
+> **1-Line Summary:** Visual analytics breakdown displaying category percentage shares and net savings rate progress bars.
+* **User Intention (Non-Negotiable):** Deliver Realbyte's Statistics tab capabilities to inspect spending leaks and savings growth.
+* **Visual / UI Behavior:** Realbyte-style Stats tab featuring a top savings rate progress card, followed by percentage-ranked expense category bars and income breakdowns.
+* **Code Anchors (Grep Targets):**
+  * `src/modules/statistics/analytics.ts` -> `computePeriodAnalytics`
+  * `src/components/StatsTab.vue` -> `stats`
+
+### [FEATURE: Bank-Statement-Importer] | Aliases: qif import, csv import, ofx import, statement parser
+> **1-Line Summary:** Multi-format bank statement parser adapted from Actual Budget supporting QIF, OFX, and Bangladeshi CSV formats.
+* **User Intention (Non-Negotiable):** Enable bulk statement import from local bank accounts (City Bank, BRAC Bank, Sonali Bank) without manual line-by-line logging.
+* **Visual / UI Behavior:** Importer utility parsing files and generating structured transaction arrays.
+* **Code Anchors (Grep Targets):**
+  * `src/modules/importers/qifParser.ts` -> `parseQifContent`
+  * `src/modules/importers/csvParser.ts` -> `parseCsvStatement`
 
 ---
 
@@ -61,8 +77,3 @@
 > **1-Line Summary:** Optional double-entry journal view or automated Beancount/GnuCash export to help the user learn and practice true accounting.
 * **User Intention:** Ensure mathematical ledger integrity (Assets = Liabilities + Equity) without overwhelming daily fast logging.
 * **Target Integration Point:** Connects to transaction commit pipeline, auto-generating balanced debit/credit journal entries in the background.
-
-### [WISHLIST: Period-Visual-Analytics] | Aliases: category charts, monthly trends, cashflow breakdown
-> **1-Line Summary:** Interactive breakdown charts (pie chart for category percentages, bar charts for month-over-month income vs expense).
-* **User Intention:** Provide quick visual feedback on spending leaks and net savings trends.
-* **Target Integration Point:** Feeds from aggregated transaction SQLite queries.

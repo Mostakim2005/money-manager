@@ -129,10 +129,10 @@ sequenceDiagram
 
 ### [VERIFY: Automated-Check-Suite] | Aliases: build test, verify logic, typecheck, lint
 > **1-Line Summary:** Standardized commands to verify mathematical accuracy, sync consistency, and build readiness.
-* **Type & Logic Verification:** `npm run test` or `flutter test` (verifying Sanchaypatra slab calculations and calendar aggregations).
-* **Code Quality & Linting:** `npm run lint` or `flutter analyze`.
-* **Portable Desktop Build:** `npm run build:windows` or `flutter build windows`.
-* **Mobile APK Build:** `npm run build:android` or `flutter build apk --release`.
+* **Type & Logic Verification:** `npm test` (verifying Sanchaypatra slab calculations, calendar matrix, accounts hierarchy, and statement parsers).
+* **Type Check & Compilation:** `npm run typecheck` or `npm run build`.
+* **Code Quality & Linting:** `npm run lint`.
+* **Portable Desktop Build:** `npm run tauri build` (or tag-triggered GitHub Actions cloud build).
 
 ---
 
