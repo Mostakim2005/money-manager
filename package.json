@@ -1,0 +1,32 @@
+{
+  "name": "money-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform Personal Finance & Money Manager with Realbyte parity, Sanchaypatra profit tracking, and cloud sync",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint src/ --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --ignore-path .gitignore",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "date-fns": "^3.6.0",
+    "lucide-vue-next": "^0.378.0",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.27"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^20.12.11",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11",
+    "vitest": "^1.6.0",
+    "vue-tsc": "^2.0.16"
+  }
+}
