@@ -55,12 +55,14 @@ flowchart TB
 
 ## 3. Core Subsystems & Engineering Tricks
 
-### [SUBSYSTEM: Actual-Budget-Cherry-Picked-Engines] | Aliases: actual budget rules, auto categorization, csv ofx importer
-> **1-Line Summary:** Direct port of Actual Budget's TypeScript rules engine and statement parsers into the Vue 3 / Tauri application without adopting envelope budgeting.
-* **How It Works (Plain English):** Actual Budget's codebase contains modular TypeScript utilities for automated categorization rules ("if Payee contains X, set Category Y") and multi-format bank statement parsing (CSV, QIF, OFX). Because our PC Power App is built in TypeScript (Vue 3 + Tauri 2), we directly port these utility modules without language translation, granting smart auto-tagging while preserving Realbyte's simple cashflow ledger model.
+### [SUBSYSTEM: Actual-Budget-Cherry-Picked-Engines] | Aliases: actual budget rules, auto categorization, csv ofx qif camt importer, split merge transactions
+> **1-Line Summary:** Direct port of Actual Budget's TypeScript rules engine, multi-format statement parsers (CSV, QIF, OFX, CAMT.053 XML), CSV exporter, and split/merge transaction utilities into the Vue 3 / Tauri application.
+* **How It Works (Plain English):** Actual Budget's codebase contains modular TypeScript utilities for automated categorization rules ("if Payee/Note contains X, set Category Y"), multi-format bank statement parsing (`qif2json.ts`, `ofx2json.ts`, `xmlcamt2json.ts`), RFC-4180 CSV export (`export-to-csv.ts`), and split/merge transaction handling (`merge.ts`). Because our PC Power App is built in TypeScript (Vue 3 + Tauri 2), we directly port these utility modules without language translation, granting smart auto-tagging and bank reconciliation while preserving Realbyte's fluid cashflow ledger model.
 * **Code Anchors (Grep Targets):**
-  * `src/modules/rules/` -> `RuleEngine`, `applyRules`
-  * `src/modules/importers/` -> `parseBankStatement`
+  * `src/modules/rules/engine.ts` -> `applyRulesToTransaction`
+  * `src/modules/importers/` -> `parseCsvStatement`, `parseQifContent`, `parseOfxStatement`, `parseCamtXmlStatement`
+  * `src/modules/exporters/csvExporter.ts` -> `exportTransactionsToCsv`, `exportFullBackupJson`
+  * `src/modules/transactions/recurringAndSplit.ts` -> `splitTransaction`, `mergeTransactions`, `processDueRecurringSchedules`
 
 ---
 

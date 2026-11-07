@@ -177,6 +177,88 @@
       </div>
     </div>
 
+    <!-- Recurring Bills & Scheduled Transactions Card -->
+    <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h3 class="font-bold text-white text-base flex items-center gap-2">
+            <span>📅</span> Recurring Bills & Scheduled Transactions
+          </h3>
+          <p class="text-xs text-slate-400 mt-0.5">
+            Automate monthly rent, utilities, and scheduled subscription payments.
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            @click="handlePostDueBills"
+            class="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1 active:scale-95"
+            title="Post due scheduled bills up to 2026-12-05"
+          >
+            <span>⚡</span> Post Due Bills
+          </button>
+          <button
+            type="button"
+            @click="showAddRecurringModal = true"
+            class="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold shadow-md transition-all whitespace-nowrap"
+          >
+            + Add Recurring
+          </button>
+        </div>
+      </div>
+
+      <div v-if="postResultMsg" class="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-xs text-amber-300 font-semibold">
+        {{ postResultMsg }}
+      </div>
+
+      <div v-if="store.recurringSchedules.length === 0" class="text-center py-6 text-slate-500 text-xs">
+        No recurring bills scheduled.
+      </div>
+
+      <div v-else class="space-y-2">
+        <div
+          v-for="sched in store.recurringSchedules"
+          :key="sched.id"
+          class="p-3 rounded-xl bg-slate-900/50 border border-slate-700/50 flex items-center justify-between gap-3 text-xs"
+        >
+          <div class="space-y-1">
+            <div class="font-bold text-white flex items-center gap-2">
+              <span>{{ sched.name }}</span>
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 uppercase">
+                {{ sched.frequency }}
+              </span>
+            </div>
+            <div class="text-slate-400 flex items-center gap-2 flex-wrap text-[11px]">
+              <span>{{ getCategoryName(sched.categoryId) }}</span>
+              <span>•</span>
+              <span>{{ getAccountName(sched.accountId) }}</span>
+              <span class="text-amber-400 font-semibold">• 📅 Due: {{ sched.nextDueDate }}</span>
+              <span v-if="sched.note">• {{ sched.note }}</span>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 flex-shrink-0">
+            <div class="text-right">
+              <div
+                class="text-xs font-bold"
+                :class="sched.type === 'income' ? 'text-emerald-400' : 'text-rose-400'"
+              >
+                {{ sched.type === 'income' ? '+' : '-' }}৳{{ sched.amount.toLocaleString() }}
+              </div>
+            </div>
+            <button
+              type="button"
+              @click="store.deleteRecurringSchedule(sched.id)"
+              class="text-rose-400 hover:text-rose-300 p-1.5 hover:bg-rose-500/10 rounded-lg text-xs font-semibold transition-all"
+              title="Delete Schedule"
+            >
+              🗑️
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Auto-Categorization Rules Card (Actual Budget Engine) -->
     <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-xl space-y-4">
       <div class="flex items-center justify-between">
@@ -306,6 +388,46 @@
       </div>
     </div>
 
+    <!-- Data Export & Backup Vault Card -->
+    <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-xl space-y-3">
+      <div>
+        <h3 class="font-bold text-white text-base flex items-center gap-2">
+          <span>💾</span> Data Export & Backup Vault
+        </h3>
+        <p class="text-xs text-slate-400 mt-0.5">
+          Download portable CSV reports or full JSON state snapshots of all accounts, transactions, and schemes.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+        <button
+          type="button"
+          @click="downloadLedgerCsv"
+          class="p-4 rounded-xl bg-slate-900/80 border border-slate-700 hover:border-slate-500 text-left transition-all space-y-1 hover:bg-slate-800/60 shadow-md group"
+        >
+          <div class="text-xs font-bold text-white flex items-center gap-1.5 group-hover:text-rose-400 transition-colors">
+            <span>📊</span> Export Ledger CSV
+          </div>
+          <p class="text-[11px] text-slate-400">
+            Export all {{ store.transactions.length }} transactions formatted with accounts, categories, and amounts.
+          </p>
+        </button>
+
+        <button
+          type="button"
+          @click="downloadFullJsonVault"
+          class="p-4 rounded-xl bg-slate-900/80 border border-slate-700 hover:border-slate-500 text-left transition-all space-y-1 hover:bg-slate-800/60 shadow-md group"
+        >
+          <div class="text-xs font-bold text-white flex items-center gap-1.5 group-hover:text-sky-400 transition-colors">
+            <span>📦</span> Export Full JSON Vault
+          </div>
+          <p class="text-[11px] text-slate-400">
+            Complete portable backup of transactions, accounts, categories, rules, schedules, and Sanchaypatra.
+          </p>
+        </button>
+      </div>
+    </div>
+
     <!-- Add Auto-Categorization Rule Modal -->
     <div
       v-if="showAddRuleModal"
@@ -385,6 +507,136 @@
         </div>
       </div>
     </div>
+
+    <!-- Add Recurring Schedule Modal -->
+    <div
+      v-if="showAddRecurringModal"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+      @click.self="showAddRecurringModal = false"
+    >
+      <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 w-full max-w-md shadow-2xl space-y-4 text-white">
+        <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+          <h3 class="text-base font-bold text-white">Add Recurring Bill / Income</h3>
+          <button
+            type="button"
+            @click="showAddRecurringModal = false"
+            class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Schedule Name</label>
+          <input
+            v-model="newSchedule.name"
+            placeholder="e.g. Monthly Internet Bill / Gym Membership"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+          />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Type</label>
+            <select
+              v-model="newSchedule.type"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            >
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Amount (৳)</label>
+            <input
+              v-model.number="newSchedule.amount"
+              type="number"
+              placeholder="0"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-slate-600"
+            />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Category</label>
+            <select
+              v-model="newSchedule.categoryId"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            >
+              <option
+                v-for="cat in store.categories.filter(c => c.type === newSchedule.type)"
+                :key="cat.id"
+                :value="cat.id"
+              >
+                {{ cat.name }}
+              </option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Account</label>
+            <select
+              v-model="newSchedule.accountId"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            >
+              <option v-for="acc in store.accounts" :key="acc.id" :value="acc.id">
+                {{ acc.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Frequency</label>
+            <select
+              v-model="newSchedule.frequency"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            >
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="weekly">Weekly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Next Due Date</label>
+            <input
+              v-model="newSchedule.nextDueDate"
+              type="date"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1">Note (Optional)</label>
+          <input
+            v-model="newSchedule.note"
+            placeholder="e.g. Auto-pay on 1st of month"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+          />
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            @click="showAddRecurringModal = false"
+            class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            @click="handleAddRecurring"
+            :disabled="!newSchedule.name.trim() || newSchedule.amount <= 0"
+            class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-40 text-white text-xs font-semibold shadow-lg"
+          >
+            Save Schedule
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -392,6 +644,7 @@
 import { ref } from 'vue';
 import { useMoneyStore } from '../store';
 import { RealbytePcManagerClient } from '../modules/realbyte/client';
+import { TransactionType } from '../types';
 
 const store = useMoneyStore();
 const connectionTestResult = ref<{ success: boolean; message: string } | null>(null);
@@ -405,6 +658,21 @@ const newRuleName = ref('');
 const newRuleField = ref<'note' | 'payee'>('note');
 const newRuleKeyword = ref('');
 const newRuleCategoryId = ref(store.categories[0]?.id || '');
+
+// Recurring Schedules State
+const showAddRecurringModal = ref(false);
+const postResultMsg = ref('');
+const newSchedule = ref({
+  name: '',
+  amount: 0,
+  type: 'expense' as TransactionType,
+  categoryId: store.categories[0]?.id || '',
+  accountId: store.accounts[0]?.id || '',
+  frequency: 'monthly' as 'monthly' | 'quarterly' | 'yearly' | 'weekly',
+  nextDueDate: new Date().toISOString().split('T')[0],
+  autoPost: true,
+  note: ''
+});
 
 // Beancount Preview State
 const showBeancountPreview = ref(false);
@@ -436,7 +704,6 @@ async function runPcManagerSync() {
   }
 }
 
-// Sample SQLite Vault Dump with overlapping UIDs 5003/5007 and new UID 5008
 const sampleVaultDump = {
   assets: [
     { UID: 1, NAME: 'Cash Wallet', AMOUNT: 8500, ASSET_TYPE: 'cash', CURRENCY: 'BDT' },
@@ -523,6 +790,11 @@ function getCategoryName(catId: string): string {
   return cat ? cat.name : catId;
 }
 
+function getAccountName(accId: string): string {
+  const acc = store.accounts.find(a => a.id === accId);
+  return acc ? acc.name : accId;
+}
+
 function handleAddRule() {
   if (!newRuleName.value.trim() || !newRuleKeyword.value.trim() || !newRuleCategoryId.value) return;
 
@@ -549,11 +821,66 @@ function handleAddRule() {
   newRuleKeyword.value = '';
 }
 
+function handlePostDueBills() {
+  const count = store.runDueRecurringSchedules('2026-12-05');
+  postResultMsg.value = count > 0
+    ? `Successfully posted ${count} due recurring bills!`
+    : 'No bills are currently due as of 2026-12-05.';
+  setTimeout(() => {
+    postResultMsg.value = '';
+  }, 4000);
+}
+
+function handleAddRecurring() {
+  if (!newSchedule.value.name.trim() || newSchedule.value.amount <= 0) return;
+
+  store.addRecurringSchedule({
+    name: newSchedule.value.name.trim(),
+    amount: newSchedule.value.amount,
+    type: newSchedule.value.type,
+    categoryId: newSchedule.value.categoryId,
+    accountId: newSchedule.value.accountId,
+    frequency: newSchedule.value.frequency,
+    nextDueDate: newSchedule.value.nextDueDate,
+    autoPost: newSchedule.value.autoPost,
+    note: newSchedule.value.note.trim()
+  });
+
+  showAddRecurringModal.value = false;
+  newSchedule.value.name = '';
+  newSchedule.value.amount = 0;
+  newSchedule.value.note = '';
+}
+
 function copyBeancount() {
   navigator.clipboard.writeText(store.beancountExport);
   copySuccess.value = true;
   setTimeout(() => {
     copySuccess.value = false;
   }, 2000);
+}
+
+function downloadLedgerCsv() {
+  const blob = new Blob([store.csvExport], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'money-manager-ledger.csv');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function downloadFullJsonVault() {
+  const blob = new Blob([store.fullBackupJson], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'money-manager-vault-backup.json');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 </script>

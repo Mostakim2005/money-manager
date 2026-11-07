@@ -5,6 +5,14 @@ description = "Cross-platform Personal Finance & Money Manager with Realbyte par
 authors = ["Mostakim"]
 edition = "2021"
 
+[lib]
+name = "money_manager_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "money-manager"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

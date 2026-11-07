@@ -126,3 +126,24 @@ export interface DoubleEntryJournalEntry {
   postings: JournalPosting[];
   balanced: boolean;
 }
+
+export interface RecurringSchedule {
+  id: string;
+  name: string;
+  amount: number;
+  type: TransactionType;
+  categoryId: string;
+  accountId: string;
+  targetAccountId?: string;
+  frequency: 'monthly' | 'quarterly' | 'yearly' | 'weekly';
+  nextDueDate: string; // YYYY-MM-DD
+  autoPost: boolean;
+  note?: string;
+}
+
+export interface SplitAllocation {
+  categoryId: string;
+  amount: number;
+  note?: string;
+}
+

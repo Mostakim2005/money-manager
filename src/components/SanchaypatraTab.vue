@@ -70,9 +70,21 @@
           </div>
         </div>
 
-        <div class="flex items-center justify-between text-xs text-slate-400 pt-1">
-          <div>Linked Account: <span class="text-slate-200 font-medium">{{ getAccountName(scheme.linkedAccountId) }}</span></div>
-          <div>Tax: <span class="text-amber-400 font-semibold">{{ scheme.aitRate * 100 }}% AIT</span></div>
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 pt-2 border-t border-slate-700/50">
+          <div>
+            Linked Account: <span class="text-slate-200 font-medium">{{ getAccountName(scheme.linkedAccountId) }}</span>
+            <span class="mx-1.5 text-slate-600">•</span>
+            Tax: <span class="text-amber-400 font-semibold">{{ scheme.aitRate * 100 }}% AIT</span>
+          </div>
+
+          <button
+            type="button"
+            @click="handleCollectPayout(scheme.id)"
+            class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all flex items-center gap-1 active:scale-95"
+            title="Log net periodic profit into linked bank account and advance schedule"
+          >
+            <span>💰</span> Collect Payout (+{{ formatBDT(scheme.netPeriodicProfit) }})
+          </button>
         </div>
       </div>
     </div>
@@ -171,6 +183,10 @@ const previewResult = computed(() => {
 
 function getAccountName(id: string): string {
   return store.accounts.find(a => a.id === id)?.name || 'Linked Account';
+}
+
+function handleCollectPayout(schemeId: string) {
+  store.collectSanchaypatraPayout(schemeId);
 }
 
 function handleSave() {

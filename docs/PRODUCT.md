@@ -66,15 +66,24 @@
   * `src/modules/statistics/analytics.ts` -> `computePeriodAnalytics`
   * `src/components/StatsTab.vue` -> `stats`
 
-### [FEATURE: Bank-Statement-Importer] | Aliases: qif import, csv import, ofx import, statement parser
-> **1-Line Summary:** Multi-format bank statement parser adapted from Actual Budget supporting QIF, OFX 1.x/2.x, and Bangladeshi CSV formats with deterministic deduplication.
-* **User Intention (Non-Negotiable):** Enable bulk statement import from local bank accounts (City Bank, BRAC Bank, Sonali Bank) without manual line-by-line logging or duplicate records.
-* **Visual / UI Behavior:** Interactive Statement Importer modal parsing CSV, QIF, and OFX files, applying auto-categorization rules, and reporting inserted vs. skipped duplicate transactions.
+### [FEATURE: Bank-Statement-Importer] | Aliases: qif import, csv import, ofx import, camt xml import, statement parser, csv exporter
+> **1-Line Summary:** Multi-format bank statement parser and exporter adapted from Actual Budget supporting QIF, OFX 1.x/2.x, ISO 20022 CAMT.053 XML, and Bangladeshi CSV formats with deterministic deduplication and RFC-4180 CSV/JSON exports.
+* **User Intention (Non-Negotiable):** Enable bulk statement import from local bank accounts (City Bank, BRAC Bank, Sonali Bank) without manual line-by-line logging or duplicate records, plus 1-click CSV and JSON vault exports.
+* **Visual / UI Behavior:** Interactive Statement Importer modal parsing CSV, QIF, OFX, and CAMT.053 XML files, applying auto-categorization rules, and reporting inserted vs. skipped duplicate transactions; 1-click CSV and JSON export buttons.
 * **Code Anchors (Grep Targets):**
   * `src/modules/importers/ofxParser.ts` -> `parseOfxStatement`, `mapParsedStatementToTransactions`
+  * `src/modules/importers/camtXmlParser.ts` -> `parseCamtXmlStatement`
   * `src/modules/importers/qifParser.ts` -> `parseQifContent`
   * `src/modules/importers/csvParser.ts` -> `parseCsvStatement`
+  * `src/modules/exporters/csvExporter.ts` -> `exportTransactionsToCsv`, `exportFullBackupJson`
   * `src/modules/rules/engine.ts` -> `applyRulesToTransaction`
+
+### [FEATURE: Recurring-And-Split-Transactions] | Aliases: recurring bills, split transaction, merge transactions, scheduled bills
+> **1-Line Summary:** Transaction splitting, merging, and recurring bill scheduling adapted from Actual Budget.
+* **User Intention (Non-Negotiable):** Allow splitting a single shopping receipt across multiple categories, merging partial records, and automating monthly recurring bills (Rent, DESCO, Titas Gas) and Sanchaypatra profit collection.
+* **Visual / UI Behavior:** Split (`✂️ Split`) and Delete (`🗑️`) actions on transaction rows, 1-click `"💰 Collect Payout"` on Sanchaypatra certificates, and a Recurring Bills scheduler card in Settings.
+* **Code Anchors (Grep Targets):**
+  * `src/modules/transactions/recurringAndSplit.ts` -> `splitTransaction`, `mergeTransactions`, `processDueRecurringSchedules`, `advanceDueDate`
 
 ### [FEATURE: Double-Entry-Ledger-Bridge] | Aliases: double entry, accounting tutor, trial balance, beancount export
 > **1-Line Summary:** Automated double-entry journal engine and Beancount plain-text exporter maintaining strict trial balance integrity (`Debits = Credits`).

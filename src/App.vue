@@ -95,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue';
 import { useMoneyStore } from './store';
 import TransactionsTab from './components/TransactionsTab.vue';
 import CalendarTab from './components/CalendarTab.vue';
@@ -104,4 +105,8 @@ import SanchaypatraTab from './components/SanchaypatraTab.vue';
 import SettingsTab from './components/SettingsTab.vue';
 
 const store = useMoneyStore();
+
+onMounted(() => {
+  store.hydrateState();
+});
 </script>

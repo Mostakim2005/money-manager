@@ -7,7 +7,9 @@ import {
   BudgetMode,
   Rule,
   SyncReconciliationReport,
-  DoubleEntryJournalEntry
+  DoubleEntryJournalEntry,
+  RecurringSchedule,
+  SplitAllocation
 } from '../types';
 import { BANGLADESH_SANCHAYPATRA_SCHEMES } from '../modules/sanchaypatra/schemes';
 import { calculateSanchaypatraProfit, generatePayoutScheduleDates } from '../modules/sanchaypatra/calculator';
@@ -19,11 +21,21 @@ import { RealbytePcManagerClient, normalizePcManagerData, RawPcManagerPayload } 
 import { parseCsvStatement } from '../modules/importers/csvParser';
 import { parseQifContent } from '../modules/importers/qifParser';
 import { parseOfxStatement, mapParsedStatementToTransactions } from '../modules/importers/ofxParser';
+import { parseCamtXmlStatement } from '../modules/importers/camtXmlParser';
+import { exportTransactionsToCsv, exportFullBackupJson } from '../modules/exporters/csvExporter';
+import {
+  splitTransaction,
+  mergeTransactions,
+  processDueRecurringSchedules,
+  advanceDueDate
+} from '../modules/transactions/recurringAndSplit';
 import {
   generateDoubleEntryJournal,
   verifyLedgerTrialBalance,
   exportJournalToBeancount
 } from '../modules/ledger/doubleEntryBridge';
+
+const STORAGE_KEY = 'money_manager_persisted_state_v1';
 
 export const useMoneyStore = defineStore('money', {
   state: () => ({
@@ -96,6 +108,34 @@ export const useMoneyStore = defineStore('money', {
       }
     ] as SanchaypatraScheme[],
 
+    // Recurring Bills & Scheduled Income
+    recurringSchedules: [
+      {
+        id: 'rec-rent',
+        name: 'Monthly Apartment Rent',
+        amount: 25000,
+        type: 'expense',
+        categoryId: 'rent',
+        accountId: 'city_bank',
+        frequency: 'monthly',
+        nextDueDate: '2026-12-01',
+        autoPost: true,
+        note: 'Automated monthly rent schedule'
+      },
+      {
+        id: 'rec-desco',
+        name: 'DESCO Electricity & Titas Gas',
+        amount: 3800,
+        type: 'expense',
+        categoryId: 'utilities',
+        accountId: 'bkash',
+        frequency: 'monthly',
+        nextDueDate: '2026-11-15',
+        autoPost: true,
+        note: 'Monthly utility bill'
+      }
+    ] as RecurringSchedule[],
+
     // Auto-categorization Rules (Actual Budget Engine)
     rules: [
       {
@@ -157,10 +197,64 @@ export const useMoneyStore = defineStore('money', {
     },
     beancountExport(): string {
       return exportJournalToBeancount(this.doubleEntryJournal, 'BDT');
+    },
+    csvExport(state): string {
+      return exportTransactionsToCsv(state.transactions, state.accounts, state.categories);
+    },
+    fullBackupJson(state): string {
+      return exportFullBackupJson({
+        transactions: state.transactions,
+        accounts: state.accounts,
+        categories: state.categories,
+        sanchaypatraSchemes: state.sanchaypatraSchemes,
+        rules: state.rules,
+        recurringSchedules: state.recurringSchedules
+      });
     }
   },
 
   actions: {
+    persistState() {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({
+              budgetMode: this.budgetMode,
+              categories: this.categories,
+              accounts: this.accounts,
+              sanchaypatraSchemes: this.sanchaypatraSchemes,
+              recurringSchedules: this.recurringSchedules,
+              rules: this.rules,
+              transactions: this.transactions
+            })
+          );
+        }
+      } catch {
+        // Ignore storage quota errors in headless environments
+      }
+    },
+
+    hydrateState() {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.budgetMode) this.budgetMode = parsed.budgetMode;
+            if (Array.isArray(parsed.categories)) this.categories = parsed.categories;
+            if (Array.isArray(parsed.accounts)) this.accounts = parsed.accounts;
+            if (Array.isArray(parsed.sanchaypatraSchemes)) this.sanchaypatraSchemes = parsed.sanchaypatraSchemes;
+            if (Array.isArray(parsed.recurringSchedules)) this.recurringSchedules = parsed.recurringSchedules;
+            if (Array.isArray(parsed.rules)) this.rules = parsed.rules;
+            if (Array.isArray(parsed.transactions)) this.transactions = parsed.transactions;
+          }
+        }
+      } catch {
+        // Ignore invalid JSON
+      }
+    },
+
     addTransaction(txn: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) {
       if (txn.type === 'transfer' && txn.targetAccountId) {
         const result = executeAccountTransfer(this.accounts, {
@@ -178,6 +272,7 @@ export const useMoneyStore = defineStore('money', {
           syncSource: 'local'
         };
         this.transactions.unshift(transferWithFp);
+        this.persistState();
         return;
       }
 
@@ -190,13 +285,11 @@ export const useMoneyStore = defineStore('money', {
         updatedAt: now
       };
 
-      // Apply Actual Budget auto-categorization rules
       const ruledTxn = applyRulesToTransaction(draftTxn, this.rules);
       ruledTxn.fingerprint = computeTransactionFingerprint(ruledTxn);
 
       this.transactions.unshift(ruledTxn);
 
-      // Adjust account balance (handling asset vs credit card liability accounts)
       const account = this.accounts.find(a => a.id === ruledTxn.accountId);
       if (account) {
         if (isLiabilityAccount(account.type)) {
@@ -207,6 +300,59 @@ export const useMoneyStore = defineStore('money', {
           else if (ruledTxn.type === 'expense') account.balance -= ruledTxn.amount;
         }
       }
+      this.persistState();
+    },
+
+    deleteTransaction(txnId: string) {
+      const idx = this.transactions.findIndex(t => t.id === txnId);
+      if (idx === -1) return;
+      const txn = this.transactions[idx];
+
+      // Reverse account balance impact
+      const sourceAcc = this.accounts.find(a => a.id === txn.accountId);
+      if (sourceAcc) {
+        if (txn.type === 'transfer') {
+          if (isLiabilityAccount(sourceAcc.type)) sourceAcc.balance -= txn.amount;
+          else sourceAcc.balance += txn.amount;
+        } else if (isLiabilityAccount(sourceAcc.type)) {
+          if (txn.type === 'expense') sourceAcc.balance -= txn.amount;
+          else if (txn.type === 'income') sourceAcc.balance += txn.amount;
+        } else {
+          if (txn.type === 'income') sourceAcc.balance -= txn.amount;
+          else if (txn.type === 'expense') sourceAcc.balance += txn.amount;
+        }
+      }
+
+      if (txn.type === 'transfer' && txn.targetAccountId) {
+        const targetAcc = this.accounts.find(a => a.id === txn.targetAccountId);
+        if (targetAcc) {
+          if (isLiabilityAccount(targetAcc.type)) targetAcc.balance += txn.amount;
+          else targetAcc.balance -= txn.amount;
+        }
+      }
+
+      this.transactions.splice(idx, 1);
+      this.persistState();
+    },
+
+    splitExistingTransaction(txnId: string, splits: SplitAllocation[]) {
+      const idx = this.transactions.findIndex(t => t.id === txnId);
+      if (idx === -1) return;
+      const parentTxn = this.transactions[idx];
+      const children = splitTransaction(parentTxn, splits);
+      this.transactions.splice(idx, 1, ...children);
+      this.persistState();
+    },
+
+    mergeSelectedTransactions(txnIds: string[]) {
+      const targets = this.transactions.filter(t => txnIds.includes(t.id));
+      if (targets.length < 2) return;
+      const merged = mergeTransactions(targets);
+      this.transactions = [
+        merged,
+        ...this.transactions.filter(t => !txnIds.includes(t.id))
+      ];
+      this.persistState();
     },
 
     addAccount(acc: Omit<Account, 'id'>) {
@@ -214,6 +360,15 @@ export const useMoneyStore = defineStore('money', {
         ...acc,
         id: 'acc-' + Date.now()
       });
+      this.persistState();
+    },
+
+    addCategory(cat: Omit<Category, 'id'>) {
+      this.categories.push({
+        ...cat,
+        id: 'cat-' + Date.now()
+      });
+      this.persistState();
     },
 
     addRule(rule: Omit<Rule, 'id'>) {
@@ -221,10 +376,39 @@ export const useMoneyStore = defineStore('money', {
         ...rule,
         id: 'rule-' + Date.now()
       });
+      this.persistState();
     },
 
     deleteRule(ruleId: string) {
       this.rules = this.rules.filter(r => r.id !== ruleId);
+      this.persistState();
+    },
+
+    addRecurringSchedule(sched: Omit<RecurringSchedule, 'id'>) {
+      this.recurringSchedules.push({
+        ...sched,
+        id: 'rec-' + Date.now()
+      });
+      this.persistState();
+    },
+
+    deleteRecurringSchedule(schedId: string) {
+      this.recurringSchedules = this.recurringSchedules.filter(s => s.id !== schedId);
+      this.persistState();
+    },
+
+    runDueRecurringSchedules(asOfDateISO?: string): number {
+      const targetDate = asOfDateISO || this.selectedDate;
+      const { updatedSchedules, generatedTransactions } = processDueRecurringSchedules(
+        this.recurringSchedules,
+        targetDate
+      );
+      this.recurringSchedules = updatedSchedules;
+      for (const tx of generatedTransactions) {
+        this.addTransaction(tx);
+      }
+      this.persistState();
+      return generatedTransactions.length;
     },
 
     addSanchaypatra(schemeData: {
@@ -265,12 +449,39 @@ export const useMoneyStore = defineStore('money', {
       };
 
       this.sanchaypatraSchemes.push(newScheme);
+      this.persistState();
     },
 
-    /**
-     * Sync Pathway 1: Syncs from Realbyte's built-in PC Manager Wi-Fi server (or a provided payload)
-     * with zero-collision fingerprint & externalUid reconciliation.
-     */
+    collectSanchaypatraPayout(schemeId: string) {
+      const scheme = this.sanchaypatraSchemes.find(s => s.id === schemeId);
+      if (!scheme) return;
+
+      this.addTransaction({
+        date: scheme.nextPayoutDate,
+        time: '10:00',
+        amount: scheme.netPeriodicProfit,
+        type: 'income',
+        categoryId: 'sanchay_return',
+        accountId: scheme.linkedAccountId,
+        note: `${scheme.name} (${scheme.registrationNo}) profit payout`
+      });
+
+      const freq =
+        scheme.payoutFrequencyMonths === 1
+          ? 'monthly'
+          : scheme.payoutFrequencyMonths === 3
+            ? 'quarterly'
+            : 'monthly';
+
+      if (scheme.payoutFrequencyMonths === 6) {
+        const step1 = advanceDueDate(scheme.nextPayoutDate, 'quarterly');
+        scheme.nextPayoutDate = advanceDueDate(step1, 'quarterly');
+      } else {
+        scheme.nextPayoutDate = advanceDueDate(scheme.nextPayoutDate, freq);
+      }
+      this.persistState();
+    },
+
     async syncFromPcManager(overridePayload?: RawPcManagerPayload): Promise<SyncReconciliationReport> {
       this.syncStatus = 'Syncing';
       try {
@@ -288,7 +499,6 @@ export const useMoneyStore = defineStore('money', {
             ]);
             payload = { accounts, categories, transactions };
           } else {
-            // Fallback demonstration payload representing Realbyte PC Manager response
             payload = {
               accounts: [
                 { uid: 1, name: 'Cash Wallet', amount: 8500, currency: 'BDT', asset_type: 0 },
@@ -342,6 +552,7 @@ export const useMoneyStore = defineStore('money', {
         this.categories = reconciled.categories;
         this.lastSyncReport = reconciled.report;
         this.syncStatus = 'Synced';
+        this.persistState();
         return reconciled.report;
       } catch (err) {
         this.syncStatus = 'Disconnected';
@@ -349,10 +560,6 @@ export const useMoneyStore = defineStore('money', {
       }
     },
 
-    /**
-     * Sync Pathway 2: Processes a Realbyte SQLite Vault backup (money_android.sqlite / SQL dump / JSON dump)
-     * inside an atomic WAL-verified transaction without duplicating records from PC Manager.
-     */
     async syncFromSqliteVault(
       vaultInput: string | Uint8Array | ArrayBuffer | RealbyteSQLiteDump
     ): Promise<SyncReconciliationReport> {
@@ -388,18 +595,15 @@ export const useMoneyStore = defineStore('money', {
         this.categories = reconciled.categories;
         this.lastSyncReport = reconciled.report;
         this.syncStatus = 'Synced';
+        this.persistState();
         return reconciled.report;
       } finally {
         await conn.close();
       }
     },
 
-    /**
-     * Imports bank statements (CSV, QIF, or OFX), applies auto-categorization rules,
-     * and reconciles via deterministic fingerprints so re-imports never duplicate records.
-     */
     importBankStatement(
-      format: 'csv' | 'qif' | 'ofx',
+      format: 'csv' | 'qif' | 'ofx' | 'camt',
       content: string,
       targetAccountId: string
     ): SyncReconciliationReport {
@@ -408,6 +612,21 @@ export const useMoneyStore = defineStore('money', {
       if (format === 'ofx') {
         const parsed = parseOfxStatement(content);
         mapped = mapParsedStatementToTransactions(parsed, targetAccountId, 'groceries', 'salary');
+      } else if (format === 'camt') {
+        const parsed = parseCamtXmlStatement(content);
+        mapped = mapParsedStatementToTransactions(
+          parsed.map((p, idx) => ({
+            date: p.date,
+            payee: p.payee,
+            amount: p.amount,
+            type: p.type,
+            fitId: p.acctSvcrRef || `camt-${p.date}-${p.amount}-${idx}`,
+            memo: p.notes || p.payee
+          })),
+          targetAccountId,
+          'groceries',
+          'salary'
+        );
       } else if (format === 'csv') {
         const parsed = parseCsvStatement(content);
         mapped = mapParsedStatementToTransactions(
@@ -443,7 +662,6 @@ export const useMoneyStore = defineStore('money', {
         );
       }
 
-      // Apply auto-categorization rules to each imported transaction
       const ruledTransactions = mapped.map(tx => {
         const ruled = applyRulesToTransaction(tx, this.rules);
         ruled.fingerprint = computeTransactionFingerprint(ruled);
@@ -465,6 +683,7 @@ export const useMoneyStore = defineStore('money', {
       this.transactions = reconciled.transactions;
       this.accounts = reconciled.accounts;
       this.lastSyncReport = reconciled.report;
+      this.persistState();
       return reconciled.report;
     }
   }

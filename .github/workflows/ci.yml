@@ -6,6 +6,10 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   verify:
@@ -33,7 +37,7 @@ jobs:
   build-windows:
     name: Package Windows Portable Executable (.exe)
     needs: verify
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - name: Checkout source code
@@ -48,6 +52,11 @@ jobs:
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          working-directory: src-tauri
+
       - name: Install dependencies
         run: npm ci
 
@@ -57,10 +66,107 @@ jobs:
       - name: Build Tauri Desktop Portable Application (.exe)
         run: npx tauri build --no-bundle
 
-      - name: Upload Portable Windows .exe Release Artifact
+      - name: Prepare Windows Portable Artifact
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          cp src-tauri/target/release/money-manager.exe artifacts/money-manager-windows-portable.exe
+
+      - name: Upload Windows Portable Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: money-manager-windows-portable
+          path: artifacts/money-manager-windows-portable.exe
+          if-no-files-found: error
+
+      - name: Attach Portable Windows .exe to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          files: src-tauri/target/release/money-manager.exe
+          files: artifacts/money-manager-windows-portable.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-android:
+    name: Package Android ARM64 APK (.apk)
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js v20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Rust toolchain for Android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          working-directory: src-tauri
+
+      - name: Install Android build tools and NDK
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" "platforms;android-35" "build-tools;35.0.0"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo "RANLIB_aarch64_linux_android=$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ranlib" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Web Assets
+        run: npm run build
+
+      - name: Initialize Android project in CI
+        run: npx tauri android init --ci --skip-targets-install
+
+      - name: Build release APK
+        run: npx tauri android build --ci --apk --target aarch64
+
+      - name: Align and sign Android APK
+        run: |
+          keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/test.keystore" \
+            -storepass android -keypass android -alias androidtestkey \
+            -keyalg RSA -keysize 2048 -validity 365 -dname "CN=Money Manager CI Test"
+          apk=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -n 1)
+          if [ -z "$apk" ]; then
+            apk=$(find src-tauri/gen/android -name '*.apk' | head -n 1)
+          fi
+          test -f "$apk"
+          mkdir -p artifacts
+          build_tools="$ANDROID_HOME/build-tools/35.0.0"
+          "$build_tools/zipalign" -P 16 -f 4 "$apk" "$RUNNER_TEMP/aligned.apk"
+          "$build_tools/apksigner" sign --ks "$RUNNER_TEMP/test.keystore" \
+            --ks-key-alias androidtestkey --ks-pass pass:android --key-pass pass:android \
+            --out artifacts/money-manager-android-arm64.apk "$RUNNER_TEMP/aligned.apk"
+          "$build_tools/apksigner" verify --verbose artifacts/money-manager-android-arm64.apk
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: money-manager-android-arm64
+          path: artifacts/money-manager-android-arm64.apk
+          if-no-files-found: error
+
+      - name: Attach Android .apk to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: artifacts/money-manager-android-arm64.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
