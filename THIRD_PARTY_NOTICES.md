@@ -12,6 +12,8 @@ License texts: [MIT](https://opensource.org/licenses/MIT) · [Apache-2.0](https:
 | Project | Role | License | Upstream Link |
 | --- | --- | --- | --- |
 | **Actual Budget** | Rule engine and bank statement importer parsers (CSV, QIF, OFX) | MIT | [GitHub](https://github.com/actualbudget/actual) · [License](https://github.com/actualbudget/actual/blob/master/LICENSE) |
+| **ezBookkeeping** | Calendar view design, daily inflow/outflow matrix logic, and transaction categorization patterns | GPL-3.0 | [GitHub](https://github.com/mayswind/ezbookkeeping) · [License](https://github.com/mayswind/ezbookkeeping/blob/main/LICENSE) |
+| **Cashew** | Material UI budgeting aesthetics, recurring transaction patterns, and local storage references | GPL-3.0 | [GitHub](https://github.com/jameskokoska/Cashew) · [License](https://github.com/jameskokoska/Cashew/blob/main/LICENSE) |
 | **Wealthfolio** | Desktop architecture, local-first SQLite patterns, and Tauri reference | AGPL-3.0 | [GitHub](https://github.com/wealthfolio/wealthfolio) · [License](https://github.com/wealthfolio/wealthfolio/blob/main/LICENSE) |
 | **Realbyte Money Manager** | User experience philosophy, calendar grid layout, and SQLite database schema compatibility target (No proprietary source code incorporated). | Proprietary | [Realbyte Inc.](https://realbyteapps.com) |
 
