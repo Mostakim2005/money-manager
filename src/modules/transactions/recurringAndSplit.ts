@@ -163,6 +163,7 @@ export function processDueRecurringSchedules(
 
     while (currentDueDate <= asOfDateISO) {
       generatedTransactions.push({
+        externalUid: `rec-${schedCopy.id}-${currentDueDate}`,
         date: currentDueDate,
         time: '09:00',
         amount: schedCopy.amount,

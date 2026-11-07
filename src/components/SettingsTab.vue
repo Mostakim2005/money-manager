@@ -81,7 +81,7 @@
             v-model.number="store.phonePort"
             type="number"
             placeholder="Port"
-            class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono text-center focus:outline-none focus:border-slate-500"
+            class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono text-center tabular-nums focus:outline-none focus:border-slate-500"
           />
         </div>
         <div v-if="connectionTestResult" class="text-xs font-semibold" :class="connectionTestResult.success ? 'text-emerald-400' : 'text-amber-400'">
@@ -157,19 +157,19 @@
           </div>
           <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/50">
             <div class="text-[10px] text-slate-400">Inserted</div>
-            <div class="font-bold text-sm text-emerald-400">
+            <div class="font-bold text-sm text-emerald-400 tabular-nums">
               {{ store.lastSyncReport.insertedTransactions }}
             </div>
           </div>
           <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/50">
             <div class="text-[10px] text-slate-400">Updated (LWW)</div>
-            <div class="font-bold text-sm text-sky-400">
+            <div class="font-bold text-sm text-sky-400 tabular-nums">
               {{ store.lastSyncReport.updatedTransactions }}
             </div>
           </div>
           <div class="bg-slate-900/80 p-2.5 rounded-xl border border-slate-700/50">
             <div class="text-[10px] text-slate-400">Skipped Duplicates</div>
-            <div class="font-bold text-sm text-slate-300">
+            <div class="font-bold text-sm text-slate-300 tabular-nums">
               {{ store.lastSyncReport.skippedDuplicates }}
             </div>
           </div>
@@ -200,7 +200,7 @@
           <button
             type="button"
             @click="showAddRecurringModal = true"
-            class="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold shadow-md transition-all whitespace-nowrap"
+            class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-md transition-all whitespace-nowrap"
           >
             + Add Recurring
           </button>
@@ -232,7 +232,7 @@
               <span>{{ getCategoryName(sched.categoryId) }}</span>
               <span>•</span>
               <span>{{ getAccountName(sched.accountId) }}</span>
-              <span class="text-amber-400 font-semibold">• 📅 Due: {{ sched.nextDueDate }}</span>
+              <span class="text-amber-400 font-semibold tabular-nums">• 📅 Due: {{ sched.nextDueDate }}</span>
               <span v-if="sched.note">• {{ sched.note }}</span>
             </div>
           </div>
@@ -240,7 +240,7 @@
           <div class="flex items-center gap-3 flex-shrink-0">
             <div class="text-right">
               <div
-                class="text-xs font-bold"
+                class="text-xs font-bold tabular-nums"
                 :class="sched.type === 'income' ? 'text-emerald-400' : 'text-rose-400'"
               >
                 {{ sched.type === 'income' ? '+' : '-' }}৳{{ sched.amount.toLocaleString() }}
@@ -251,6 +251,7 @@
               @click="store.deleteRecurringSchedule(sched.id)"
               class="text-rose-400 hover:text-rose-300 p-1.5 hover:bg-rose-500/10 rounded-lg text-xs font-semibold transition-all"
               title="Delete Schedule"
+              aria-label="Delete Schedule"
             >
               🗑️
             </button>
@@ -273,7 +274,7 @@
         <button
           type="button"
           @click="showAddRuleModal = true"
-          class="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold shadow-md transition-all whitespace-nowrap"
+          class="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-md transition-all whitespace-nowrap"
         >
           + Add Rule
         </button>
@@ -310,6 +311,7 @@
             @click="store.deleteRule(rule.id)"
             class="text-rose-400 hover:text-rose-300 p-1.5 hover:bg-rose-500/10 rounded-lg text-xs font-semibold transition-all"
             title="Delete Rule"
+            aria-label="Delete Rule"
           >
             🗑️
           </button>
@@ -340,20 +342,20 @@
       <div class="grid grid-cols-3 gap-2 text-center text-xs">
         <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50">
           <div class="text-[11px] text-slate-400">Total Debits</div>
-          <div class="text-sm sm:text-base font-bold text-emerald-400 mt-0.5">
+          <div class="text-sm sm:text-base font-bold text-emerald-400 mt-0.5 tabular-nums">
             ৳{{ store.trialBalance.totalDebits.toLocaleString('en-US') }}
           </div>
         </div>
         <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50">
           <div class="text-[11px] text-slate-400">Total Credits</div>
-          <div class="text-sm sm:text-base font-bold text-rose-400 mt-0.5">
+          <div class="text-sm sm:text-base font-bold text-rose-400 mt-0.5 tabular-nums">
             ৳{{ store.trialBalance.totalCredits.toLocaleString('en-US') }}
           </div>
         </div>
         <div class="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50">
           <div class="text-[11px] text-slate-400">Delta Variance</div>
           <div
-            class="text-sm sm:text-base font-bold mt-0.5"
+            class="text-sm sm:text-base font-bold mt-0.5 tabular-nums"
             :class="Math.abs(store.trialBalance.totalDebits - store.trialBalance.totalCredits) < 0.01 ? 'text-slate-200' : 'text-rose-400'"
           >
             ৳{{ Math.abs(store.trialBalance.totalDebits - store.trialBalance.totalCredits).toFixed(2) }}
@@ -370,7 +372,7 @@
             class="text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5"
           >
             <span>{{ showBeancountPreview ? '▼ Hide' : '▶ Show' }} Beancount Plain-Text Export</span>
-            <span class="text-[10px] text-slate-500 font-mono font-normal">({{ store.doubleEntryJournal.length }} postings)</span>
+            <span class="text-[10px] text-slate-500 font-mono font-normal tabular-nums">({{ store.doubleEntryJournal.length }} postings)</span>
           </button>
 
           <button
@@ -431,7 +433,10 @@
     <!-- Add Auto-Categorization Rule Modal -->
     <div
       v-if="showAddRuleModal"
-      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add Auto-Categorization Rule"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto overscroll-contain"
       @click.self="showAddRuleModal = false"
     >
       <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 w-full max-w-md shadow-2xl space-y-4 text-white">
@@ -441,6 +446,7 @@
             type="button"
             @click="showAddRuleModal = false"
             class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm"
+            aria-label="Close rule modal"
           >
             ✕
           </button>
@@ -500,7 +506,7 @@
             type="button"
             @click="handleAddRule"
             :disabled="!newRuleName.trim() || !newRuleKeyword.trim()"
-            class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-40 text-white text-xs font-semibold shadow-lg"
+            class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white text-xs font-semibold shadow-lg"
           >
             Save Rule
           </button>
@@ -511,7 +517,10 @@
     <!-- Add Recurring Schedule Modal -->
     <div
       v-if="showAddRecurringModal"
-      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add Recurring Bill or Income"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto overscroll-contain"
       @click.self="showAddRecurringModal = false"
     >
       <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 w-full max-w-md shadow-2xl space-y-4 text-white">
@@ -521,6 +530,7 @@
             type="button"
             @click="showAddRecurringModal = false"
             class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm"
+            aria-label="Close recurring modal"
           >
             ✕
           </button>
@@ -552,7 +562,7 @@
               v-model.number="newSchedule.amount"
               type="number"
               placeholder="0"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-slate-600"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white tabular-nums focus:outline-none focus:border-slate-600"
             />
           </div>
         </div>
@@ -604,7 +614,7 @@
             <input
               v-model="newSchedule.nextDueDate"
               type="date"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-slate-600"
             />
           </div>
         </div>
@@ -630,7 +640,7 @@
             type="button"
             @click="handleAddRecurring"
             :disabled="!newSchedule.name.trim() || newSchedule.amount <= 0"
-            class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-40 text-white text-xs font-semibold shadow-lg"
+            class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white text-xs font-semibold shadow-lg"
           >
             Save Schedule
           </button>
@@ -641,7 +651,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { useMoneyStore } from '../store';
 import { RealbytePcManagerClient } from '../modules/realbyte/client';
 import { TransactionType } from '../types';
@@ -651,6 +661,15 @@ const connectionTestResult = ref<{ success: boolean; message: string } | null>(n
 const syncingPcManager = ref(false);
 const syncingVault = ref(false);
 const syncError = ref('');
+
+// Timers for cleanup
+let postMsgTimer: ReturnType<typeof setTimeout> | null = null;
+let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+onUnmounted(() => {
+  if (postMsgTimer) clearTimeout(postMsgTimer);
+  if (copyTimer) clearTimeout(copyTimer);
+});
 
 // Rules State
 const showAddRuleModal = ref(false);
@@ -826,7 +845,8 @@ function handlePostDueBills() {
   postResultMsg.value = count > 0
     ? `Successfully posted ${count} due recurring bills!`
     : 'No bills are currently due as of 2026-12-05.';
-  setTimeout(() => {
+  if (postMsgTimer) clearTimeout(postMsgTimer);
+  postMsgTimer = setTimeout(() => {
     postResultMsg.value = '';
   }, 4000);
 }
@@ -855,7 +875,8 @@ function handleAddRecurring() {
 function copyBeancount() {
   navigator.clipboard.writeText(store.beancountExport);
   copySuccess.value = true;
-  setTimeout(() => {
+  if (copyTimer) clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => {
     copySuccess.value = false;
   }, 2000);
 }

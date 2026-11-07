@@ -159,6 +159,7 @@ flowchart LR
 * **Protected Code Anchors (Grep Targets):**
   * `src/modules/database/sqliteVault.ts` -> `createSQLiteConnection`, `parseRealbyteSqliteVault`
   * `src/modules/sync/syncCoordinator.ts` -> `reconcileRealbyteSync`, `computeTransactionFingerprint`
+  * `src/store/index.ts` -> `withSyncLock`, `syncFromPcManager`, `syncFromSqliteVault`
 
 ---
 

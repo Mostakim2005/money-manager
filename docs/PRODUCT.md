@@ -81,9 +81,10 @@
 ### [FEATURE: Recurring-And-Split-Transactions] | Aliases: recurring bills, split transaction, merge transactions, scheduled bills
 > **1-Line Summary:** Transaction splitting, merging, and recurring bill scheduling adapted from Actual Budget.
 * **User Intention (Non-Negotiable):** Allow splitting a single shopping receipt across multiple categories, merging partial records, and automating monthly recurring bills (Rent, DESCO, Titas Gas) and Sanchaypatra profit collection.
-* **Visual / UI Behavior:** Split (`✂️ Split`) and Delete (`🗑️`) actions on transaction rows, 1-click `"💰 Collect Payout"` on Sanchaypatra certificates, and a Recurring Bills scheduler card in Settings.
+* **Visual / UI Behavior:** Edit (`✏️`), Split (`✂️ Split`), and Delete (`🗑️`) actions on transaction rows with an immediate Undo Delete toast banner (`undoLastDelete`), 1-click `"💰 Collect Payout"` on Sanchaypatra certificates, and a Recurring Bills scheduler card in Settings.
 * **Code Anchors (Grep Targets):**
   * `src/modules/transactions/recurringAndSplit.ts` -> `splitTransaction`, `mergeTransactions`, `processDueRecurringSchedules`, `advanceDueDate`
+  * `src/store/index.ts` -> `editTransaction`, `undoLastDelete`, `toggleTheme`
 
 ### [FEATURE: Double-Entry-Ledger-Bridge] | Aliases: double entry, accounting tutor, trial balance, beancount export
 > **1-Line Summary:** Automated double-entry journal engine and Beancount plain-text exporter maintaining strict trial balance integrity (`Debits = Credits`).

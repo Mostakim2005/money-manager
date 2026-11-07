@@ -7,7 +7,7 @@
       <div class="flex items-center justify-between mb-4">
         <div>
           <div class="text-xs font-semibold text-slate-400 tracking-wider uppercase">Net Worth Total</div>
-          <div class="text-3xl font-extrabold text-white mt-1">{{ formatBDT(overview.netWorth) }}</div>
+          <div class="text-3xl font-extrabold text-white mt-1 tabular-nums">{{ formatBDT(overview.netWorth) }}</div>
         </div>
         <div class="flex items-center gap-2">
           <button
@@ -20,7 +20,7 @@
           <button
             type="button"
             @click="showAddModal = true"
-            class="px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs shadow-lg transition-all"
+            class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg transition-all"
           >
             + Add Account
           </button>
@@ -30,15 +30,15 @@
       <div class="grid grid-cols-3 gap-2 pt-3 border-t border-slate-700/60 text-center">
         <div>
           <div class="text-[11px] text-slate-400">Liquid Assets</div>
-          <div class="text-sm font-bold text-emerald-400">{{ formatBDT(overview.totalAssets) }}</div>
+          <div class="text-sm font-bold text-emerald-400 tabular-nums">{{ formatBDT(overview.totalAssets) }}</div>
         </div>
         <div>
           <div class="text-[11px] text-slate-400">Liabilities</div>
-          <div class="text-sm font-bold text-rose-400">-{{ formatBDT(overview.totalLiabilities) }}</div>
+          <div class="text-sm font-bold text-rose-400 tabular-nums">-{{ formatBDT(overview.totalLiabilities) }}</div>
         </div>
         <div>
           <div class="text-[11px] text-slate-400">Investments</div>
-          <div class="text-sm font-bold text-sky-400">{{ formatBDT(overview.totalInvestments) }}</div>
+          <div class="text-sm font-bold text-sky-400 tabular-nums">{{ formatBDT(overview.totalInvestments) }}</div>
         </div>
       </div>
     </div>
@@ -50,7 +50,7 @@
           <span class="w-2.5 h-2.5 rounded-full" :class="group.type === 'asset' ? 'bg-emerald-500' : group.type === 'liability' ? 'bg-rose-500' : 'bg-sky-500'"></span>
           {{ group.name }}
         </h3>
-        <span class="text-xs font-bold" :class="group.type === 'liability' ? 'text-rose-400' : 'text-slate-300'">
+        <span class="text-xs font-bold tabular-nums" :class="group.type === 'liability' ? 'text-rose-400' : 'text-slate-300'">
           {{ formatBDT(group.totalBalance) }}
         </span>
       </div>
@@ -71,11 +71,11 @@
             </div>
             <div>
               <div class="text-sm font-semibold text-white">{{ acc.name }}</div>
-              <div class="text-xs text-slate-400" v-if="acc.accountNumber">Acc: {{ acc.accountNumber }}</div>
+              <div class="text-xs text-slate-400 tabular-nums" v-if="acc.accountNumber">Acc: {{ acc.accountNumber }}</div>
             </div>
           </div>
 
-          <div class="text-sm font-bold" :class="acc.type === 'credit_card' || acc.type === 'liability' ? 'text-rose-400' : 'text-white'">
+          <div class="text-sm font-bold tabular-nums" :class="acc.type === 'credit_card' || acc.type === 'liability' ? 'text-rose-400' : 'text-white'">
             {{ formatBDT(acc.balance) }}
           </div>
         </div>
@@ -83,7 +83,13 @@
     </div>
 
     <!-- Add Account Modal -->
-    <div v-if="showAddModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div
+      v-if="showAddModal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Create New Account"
+      class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overscroll-contain"
+    >
       <div class="bg-slate-800 border border-slate-700 rounded-2xl p-5 w-full max-w-md shadow-2xl space-y-4">
         <h3 class="text-lg font-bold text-white">Create New Account</h3>
 
@@ -105,13 +111,13 @@
           </div>
           <div>
             <label class="block text-xs font-medium text-slate-300 mb-1">Initial Balance (৳)</label>
-            <input v-model.number="newAcc.balance" type="number" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white" />
+            <input v-model.number="newAcc.balance" type="number" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white tabular-nums" />
           </div>
         </div>
 
         <div class="flex justify-end gap-2 pt-2 border-t border-slate-700/60">
-          <button @click="showAddModal = false" class="px-4 py-2 rounded-xl bg-slate-700 text-slate-300 text-xs font-semibold">Cancel</button>
-          <button @click="handleCreateAccount" class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold shadow-lg">Save Account</button>
+          <button type="button" @click="showAddModal = false" class="px-4 py-2 rounded-xl bg-slate-700 text-slate-300 hover:bg-slate-600 text-xs font-semibold transition-all">Cancel</button>
+          <button type="button" @click="handleCreateAccount" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-lg transition-all">Save Account</button>
         </div>
       </div>
     </div>

@@ -45,7 +45,7 @@
           @click="periodScope = 'month'"
           class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
           :class="periodScope === 'month'
-            ? 'bg-rose-500 text-white shadow-md'
+            ? 'bg-rose-600 text-white shadow-md'
             : 'text-slate-400 hover:text-slate-200'"
         >
           Monthly
@@ -55,7 +55,7 @@
           @click="periodScope = 'all'"
           class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
           :class="periodScope === 'all'
-            ? 'bg-rose-500 text-white shadow-md'
+            ? 'bg-rose-600 text-white shadow-md'
             : 'text-slate-400 hover:text-slate-200'"
         >
           All-Time
@@ -68,11 +68,11 @@
       <div class="flex items-center justify-between mb-3">
         <div>
           <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider">Savings Rate</div>
-          <div class="text-2xl font-bold text-white mt-0.5">{{ stats.savingsRatePercentage }}%</div>
+          <div class="text-2xl font-bold text-white mt-0.5 tabular-nums">{{ stats.savingsRatePercentage }}%</div>
         </div>
         <div class="text-right">
           <div class="text-xs text-slate-400">Net Saved</div>
-          <div class="text-lg font-bold" :class="stats.netSavings >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+          <div class="text-lg font-bold tabular-nums" :class="stats.netSavings >= 0 ? 'text-emerald-400' : 'text-rose-400'">
             {{ stats.netSavings >= 0 ? '+' : '' }}{{ formatBDT(stats.netSavings) }}
           </div>
         </div>
@@ -119,20 +119,20 @@
       <div class="grid grid-cols-3 gap-2 text-center pt-1">
         <div class="bg-slate-900/60 border border-slate-700/50 p-2.5 rounded-xl">
           <div class="text-[11px] font-medium text-slate-400">Total Budgeted</div>
-          <div class="text-sm sm:text-base font-bold text-slate-200 mt-0.5">
+          <div class="text-sm sm:text-base font-bold text-slate-200 mt-0.5 tabular-nums">
             {{ formatBDT(totalAllocated) }}
           </div>
         </div>
         <div class="bg-slate-900/60 border border-slate-700/50 p-2.5 rounded-xl">
           <div class="text-[11px] font-medium text-slate-400">Total Spent</div>
-          <div class="text-sm sm:text-base font-bold text-rose-400 mt-0.5">
+          <div class="text-sm sm:text-base font-bold text-rose-400 mt-0.5 tabular-nums">
             {{ formatBDT(totalSpent) }}
           </div>
         </div>
         <div class="bg-slate-900/60 border border-slate-700/50 p-2.5 rounded-xl">
           <div class="text-[11px] font-medium text-slate-400">Remaining Balance</div>
           <div
-            class="text-sm sm:text-base font-bold mt-0.5"
+            class="text-sm sm:text-base font-bold mt-0.5 tabular-nums"
             :class="totalRemaining >= 0 ? 'text-emerald-400' : 'text-rose-400'"
           >
             {{ totalRemaining >= 0 ? '+' : '' }}{{ formatBDT(totalRemaining) }}
@@ -156,13 +156,13 @@
 
             <div class="flex items-center gap-2">
               <span
-                class="px-2 py-0.5 rounded-md text-[10px] font-bold"
+                class="px-2 py-0.5 rounded-md text-[10px] font-bold tabular-nums"
                 :class="getStatusBadgeClass(env.status)"
               >
                 {{ env.percentage > 100 ? 'OVER ' + env.percentage.toFixed(0) + '%' : env.percentage.toFixed(0) + '%' }}
               </span>
               <span
-                class="font-bold"
+                class="font-bold tabular-nums"
                 :class="env.remaining >= 0 ? 'text-slate-200' : 'text-rose-400'"
               >
                 {{ env.remaining >= 0 ? formatBDT(env.remaining) + ' left' : '-' + formatBDT(Math.abs(env.remaining)) + ' over' }}
@@ -181,8 +181,8 @@
 
           <!-- Bottom Row: Spent vs Allocated -->
           <div class="flex items-center justify-between text-[11px] text-slate-400">
-            <span>Spent: <strong class="text-slate-300">{{ formatBDT(env.spent) }}</strong></span>
-            <span>Envelope: <strong class="text-slate-300">{{ formatBDT(env.allocated) }}</strong></span>
+            <span>Spent: <strong class="text-slate-300 tabular-nums">{{ formatBDT(env.spent) }}</strong></span>
+            <span>Envelope: <strong class="text-slate-300 tabular-nums">{{ formatBDT(env.allocated) }}</strong></span>
           </div>
         </div>
       </div>
@@ -204,7 +204,7 @@
       <button
         type="button"
         @click="store.budgetMode = 'envelope_allocation'"
-        class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md whitespace-nowrap transition-all"
+        class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md whitespace-nowrap transition-all"
       >
         Enable Envelopes
       </button>
@@ -214,7 +214,7 @@
     <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-xl space-y-3">
       <div class="flex items-center justify-between">
         <h3 class="font-bold text-white text-sm">Expenses by Category</h3>
-        <span class="text-xs text-rose-400 font-bold">-{{ formatBDT(stats.totalExpense) }}</span>
+        <span class="text-xs text-rose-400 font-bold tabular-nums">-{{ formatBDT(stats.totalExpense) }}</span>
       </div>
 
       <div v-if="stats.expenseBreakdown.length === 0" class="text-center py-6 text-slate-500 text-sm">
@@ -228,7 +228,7 @@
               <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: item.color || '#EF4444' }"></span>
               {{ item.categoryName }}
             </span>
-            <span class="text-slate-300 font-bold">
+            <span class="text-slate-300 font-bold tabular-nums">
               {{ formatBDT(item.totalAmount) }} <span class="text-slate-400 font-normal">({{ item.percentage }}%)</span>
             </span>
           </div>
@@ -248,7 +248,7 @@
     <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-xl space-y-3">
       <div class="flex items-center justify-between">
         <h3 class="font-bold text-white text-sm">Income by Category</h3>
-        <span class="text-xs text-emerald-400 font-bold">+{{ formatBDT(stats.totalIncome) }}</span>
+        <span class="text-xs text-emerald-400 font-bold tabular-nums">+{{ formatBDT(stats.totalIncome) }}</span>
       </div>
 
       <div v-if="stats.incomeBreakdown.length === 0" class="text-center py-6 text-slate-500 text-sm">
@@ -262,7 +262,7 @@
               <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: item.color || '#10B981' }"></span>
               {{ item.categoryName }}
             </span>
-            <span class="text-slate-300 font-bold">
+            <span class="text-slate-300 font-bold tabular-nums">
               {{ formatBDT(item.totalAmount) }} <span class="text-slate-400 font-normal">({{ item.percentage }}%)</span>
             </span>
           </div>

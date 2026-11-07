@@ -37,13 +37,22 @@ import {
 
 const STORAGE_KEY = 'money_manager_persisted_state_v1';
 
+let syncQueue: Promise<unknown> = Promise.resolve();
+function withSyncLock<T>(task: () => Promise<T>): Promise<T> {
+  const next = syncQueue.then(task, task);
+  syncQueue = next.then(() => undefined, () => undefined);
+  return next;
+}
+
 export const useMoneyStore = defineStore('money', {
   state: () => ({
     activeTab: 'daily' as 'transactions' | 'daily' | 'accounts' | 'stats' | 'sanchaypatra' | 'settings',
+    themeMode: 'dark' as 'dark' | 'light',
     budgetMode: 'cashflow_ledger' as BudgetMode,
     selectedYear: 2026,
     selectedMonth: 11, // November
     selectedDate: '2026-11-07',
+    lastDeletedTransaction: null as Transaction | null,
 
     // Sync configuration
     cloudSyncPath: 'C:\\Users\\kazir\\Google Drive\\MoneyManager\\money_android.sqlite',
@@ -220,6 +229,7 @@ export const useMoneyStore = defineStore('money', {
           localStorage.setItem(
             STORAGE_KEY,
             JSON.stringify({
+              themeMode: this.themeMode,
               budgetMode: this.budgetMode,
               categories: this.categories,
               accounts: this.accounts,
@@ -241,6 +251,12 @@ export const useMoneyStore = defineStore('money', {
           const raw = localStorage.getItem(STORAGE_KEY);
           if (raw) {
             const parsed = JSON.parse(raw);
+            if (parsed.themeMode === 'light' || parsed.themeMode === 'dark') {
+              this.themeMode = parsed.themeMode;
+              if (typeof document !== 'undefined') {
+                document.documentElement.setAttribute('data-theme', this.themeMode);
+              }
+            }
             if (parsed.budgetMode) this.budgetMode = parsed.budgetMode;
             if (Array.isArray(parsed.categories)) this.categories = parsed.categories;
             if (Array.isArray(parsed.accounts)) this.accounts = parsed.accounts;
@@ -255,7 +271,28 @@ export const useMoneyStore = defineStore('money', {
       }
     },
 
+    toggleTheme() {
+      this.themeMode = this.themeMode === 'dark' ? 'light' : 'dark';
+      if (typeof document !== 'undefined') {
+        document.documentElement.classList.add('no-transitions');
+        document.documentElement.setAttribute('data-theme', this.themeMode);
+        if (typeof requestAnimationFrame !== 'undefined') {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              document.documentElement.classList.remove('no-transitions');
+            });
+          });
+        } else {
+          document.documentElement.classList.remove('no-transitions');
+        }
+      }
+      this.persistState();
+    },
+
     addTransaction(txn: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>) {
+      if (txn.externalUid && this.transactions.some(t => t.externalUid === txn.externalUid)) {
+        return;
+      }
       if (txn.type === 'transfer' && txn.targetAccountId) {
         const result = executeAccountTransfer(this.accounts, {
           sourceAccountId: txn.accountId,
@@ -331,7 +368,105 @@ export const useMoneyStore = defineStore('money', {
         }
       }
 
+      this.lastDeletedTransaction = { ...txn };
       this.transactions.splice(idx, 1);
+      this.persistState();
+    },
+
+    undoLastDelete(): boolean {
+      if (!this.lastDeletedTransaction) return false;
+      const txn = { ...this.lastDeletedTransaction };
+
+      const sourceAcc = this.accounts.find(a => a.id === txn.accountId);
+      if (sourceAcc) {
+        if (txn.type === 'transfer') {
+          if (isLiabilityAccount(sourceAcc.type)) sourceAcc.balance += txn.amount;
+          else sourceAcc.balance -= txn.amount;
+        } else if (isLiabilityAccount(sourceAcc.type)) {
+          if (txn.type === 'expense') sourceAcc.balance += txn.amount;
+          else if (txn.type === 'income') sourceAcc.balance -= txn.amount;
+        } else {
+          if (txn.type === 'income') sourceAcc.balance += txn.amount;
+          else if (txn.type === 'expense') sourceAcc.balance -= txn.amount;
+        }
+      }
+
+      if (txn.type === 'transfer' && txn.targetAccountId) {
+        const targetAcc = this.accounts.find(a => a.id === txn.targetAccountId);
+        if (targetAcc) {
+          if (isLiabilityAccount(targetAcc.type)) targetAcc.balance -= txn.amount;
+          else targetAcc.balance += txn.amount;
+        }
+      }
+
+      this.transactions.unshift(txn);
+      this.lastDeletedTransaction = null;
+      this.persistState();
+      return true;
+    },
+
+    editTransaction(txnId: string, updates: Partial<Omit<Transaction, 'id' | 'createdAt'>>) {
+      const idx = this.transactions.findIndex(t => t.id === txnId);
+      if (idx === -1) return;
+      const oldTxn = this.transactions[idx];
+
+      // 1. Reverse oldTxn's balance impact
+      const oldSource = this.accounts.find(a => a.id === oldTxn.accountId);
+      if (oldSource) {
+        if (oldTxn.type === 'transfer') {
+          if (isLiabilityAccount(oldSource.type)) oldSource.balance -= oldTxn.amount;
+          else oldSource.balance += oldTxn.amount;
+        } else if (isLiabilityAccount(oldSource.type)) {
+          if (oldTxn.type === 'expense') oldSource.balance -= oldTxn.amount;
+          else if (oldTxn.type === 'income') oldSource.balance += oldTxn.amount;
+        } else {
+          if (oldTxn.type === 'income') oldSource.balance -= oldTxn.amount;
+          else if (oldTxn.type === 'expense') oldSource.balance += oldTxn.amount;
+        }
+      }
+
+      if (oldTxn.type === 'transfer' && oldTxn.targetAccountId) {
+        const oldTarget = this.accounts.find(a => a.id === oldTxn.targetAccountId);
+        if (oldTarget) {
+          if (isLiabilityAccount(oldTarget.type)) oldTarget.balance += oldTxn.amount;
+          else oldTarget.balance -= oldTxn.amount;
+        }
+      }
+
+      // 2. Construct updatedTxn
+      const updatedTxn: Transaction = {
+        ...oldTxn,
+        ...updates,
+        id: oldTxn.id,
+        createdAt: oldTxn.createdAt,
+        updatedAt: Date.now()
+      };
+      updatedTxn.fingerprint = computeTransactionFingerprint(updatedTxn);
+
+      // 3. Apply updatedTxn's balance impact
+      const newSource = this.accounts.find(a => a.id === updatedTxn.accountId);
+      if (newSource) {
+        if (updatedTxn.type === 'transfer') {
+          if (isLiabilityAccount(newSource.type)) newSource.balance += updatedTxn.amount;
+          else newSource.balance -= updatedTxn.amount;
+        } else if (isLiabilityAccount(newSource.type)) {
+          if (updatedTxn.type === 'expense') newSource.balance += updatedTxn.amount;
+          else if (updatedTxn.type === 'income') newSource.balance -= updatedTxn.amount;
+        } else {
+          if (updatedTxn.type === 'income') newSource.balance += updatedTxn.amount;
+          else if (updatedTxn.type === 'expense') newSource.balance -= updatedTxn.amount;
+        }
+      }
+
+      if (updatedTxn.type === 'transfer' && updatedTxn.targetAccountId) {
+        const newTarget = this.accounts.find(a => a.id === updatedTxn.targetAccountId);
+        if (newTarget) {
+          if (isLiabilityAccount(newTarget.type)) newTarget.balance -= updatedTxn.amount;
+          else newTarget.balance += updatedTxn.amount;
+        }
+      }
+
+      this.transactions[idx] = updatedTxn;
       this.persistState();
     },
 
@@ -482,124 +617,128 @@ export const useMoneyStore = defineStore('money', {
       this.persistState();
     },
 
-    async syncFromPcManager(overridePayload?: RawPcManagerPayload): Promise<SyncReconciliationReport> {
-      this.syncStatus = 'Syncing';
-      try {
-        let payload: RawPcManagerPayload;
-        if (overridePayload) {
-          payload = overridePayload;
-        } else {
-          const client = new RealbytePcManagerClient(this.phoneIp, this.phonePort);
-          const reachable = await client.checkConnection();
-          if (reachable) {
-            const [accounts, categories, transactions] = await Promise.all([
-              client.fetchAccounts(),
-              client.fetchCategories(),
-              client.fetchTransactions(`${this.selectedYear}-01-01`, `${this.selectedYear}-12-31`)
-            ]);
-            payload = { accounts, categories, transactions };
+    syncFromPcManager(overridePayload?: RawPcManagerPayload): Promise<SyncReconciliationReport> {
+      return withSyncLock(async () => {
+        this.syncStatus = 'Syncing';
+        try {
+          let payload: RawPcManagerPayload;
+          if (overridePayload) {
+            payload = overridePayload;
           } else {
-            payload = {
-              accounts: [
-                { uid: 1, name: 'Cash Wallet', amount: 8500, currency: 'BDT', asset_type: 0 },
-                { uid: 4, name: 'bKash Personal', amount: 12450, currency: 'BDT', asset_type: 1 }
-              ],
-              categories: [
-                { uid: 101, name: 'Groceries & Bazar', do_type: '1' },
-                { uid: 105, name: 'Dining & Snacks', do_type: '1' }
-              ],
-              transactions: [
-                {
-                  uid: 5003,
-                  wdate: '2026-11-03',
-                  utime: 1762172000000,
-                  do_type: '1',
-                  money: 3500,
-                  asset_uid: 4,
-                  category_uid: 101,
-                  note: 'Unimart bazar'
-                },
-                {
-                  uid: 5007,
-                  wdate: '2026-11-06',
-                  utime: 1762430000000,
-                  do_type: '1',
-                  money: 650,
-                  asset_uid: 1,
-                  category_uid: 105,
-                  note: 'Evening Kacchi & Cha (Synced via PC Manager)'
-                }
-              ]
-            };
+            const client = new RealbytePcManagerClient(this.phoneIp, this.phonePort);
+            const reachable = await client.checkConnection();
+            if (reachable) {
+              const [accounts, categories, transactions] = await Promise.all([
+                client.fetchAccounts(),
+                client.fetchCategories(),
+                client.fetchTransactions(`${this.selectedYear}-01-01`, `${this.selectedYear}-12-31`)
+              ]);
+              payload = { accounts, categories, transactions };
+            } else {
+              payload = {
+                accounts: [
+                  { uid: 1, name: 'Cash Wallet', amount: 8500, currency: 'BDT', asset_type: 0 },
+                  { uid: 4, name: 'bKash Personal', amount: 12450, currency: 'BDT', asset_type: 1 }
+                ],
+                categories: [
+                  { uid: 101, name: 'Groceries & Bazar', do_type: '1' },
+                  { uid: 105, name: 'Dining & Snacks', do_type: '1' }
+                ],
+                transactions: [
+                  {
+                    uid: 5003,
+                    wdate: '2026-11-03',
+                    utime: 1762172000000,
+                    do_type: '1',
+                    money: 3500,
+                    asset_uid: 4,
+                    category_uid: 101,
+                    note: 'Unimart bazar'
+                  },
+                  {
+                    uid: 5007,
+                    wdate: '2026-11-06',
+                    utime: 1762430000000,
+                    do_type: '1',
+                    money: 650,
+                    asset_uid: 1,
+                    category_uid: 105,
+                    note: 'Evening Kacchi & Cha (Synced via PC Manager)'
+                  }
+                ]
+              };
+            }
           }
-        }
 
-        const normalized = normalizePcManagerData(payload);
-        const reconciled = reconcileRealbyteSync(
-          {
-            transactions: this.transactions,
-            accounts: this.accounts,
-            categories: this.categories
-          },
-          normalized,
-          'realbyte_pc_manager',
-          true,
-          { adjustAccountBalances: true }
-        );
-
-        this.transactions = reconciled.transactions;
-        this.accounts = reconciled.accounts;
-        this.categories = reconciled.categories;
-        this.lastSyncReport = reconciled.report;
-        this.syncStatus = 'Synced';
-        this.persistState();
-        return reconciled.report;
-      } catch (err) {
-        this.syncStatus = 'Disconnected';
-        throw err;
-      }
-    },
-
-    async syncFromSqliteVault(
-      vaultInput: string | Uint8Array | ArrayBuffer | RealbyteSQLiteDump
-    ): Promise<SyncReconciliationReport> {
-      this.syncStatus = 'Syncing';
-      const conn = createSQLiteConnection({
-        dbPath: this.cloudSyncPath,
-        journalMode: 'WAL',
-        synchronous: 'NORMAL',
-        busyTimeoutMs: 5000,
-        enforceWal: true
-      });
-
-      await conn.open();
-      try {
-        const pragmaCheck = conn.verifyPragmas();
-        const reconciled = await conn.withAtomicTransaction(() => {
-          const parsedVault = parseRealbyteSqliteVault(vaultInput);
-          return reconcileRealbyteSync(
+          const normalized = normalizePcManagerData(payload);
+          const reconciled = reconcileRealbyteSync(
             {
               transactions: this.transactions,
               accounts: this.accounts,
               categories: this.categories
             },
-            parsedVault,
-            'realbyte_sqlite_backup',
-            pragmaCheck.walMode,
+            normalized,
+            'realbyte_pc_manager',
+            true,
             { adjustAccountBalances: true }
           );
+
+          this.transactions = reconciled.transactions;
+          this.accounts = reconciled.accounts;
+          this.categories = reconciled.categories;
+          this.lastSyncReport = reconciled.report;
+          this.syncStatus = 'Synced';
+          this.persistState();
+          return reconciled.report;
+        } catch (err) {
+          this.syncStatus = 'Disconnected';
+          throw err;
+        }
+      });
+    },
+
+    syncFromSqliteVault(
+      vaultInput: string | Uint8Array | ArrayBuffer | RealbyteSQLiteDump
+    ): Promise<SyncReconciliationReport> {
+      return withSyncLock(async () => {
+        this.syncStatus = 'Syncing';
+        const conn = createSQLiteConnection({
+          dbPath: this.cloudSyncPath,
+          journalMode: 'WAL',
+          synchronous: 'NORMAL',
+          busyTimeoutMs: 5000,
+          enforceWal: true
         });
 
-        this.transactions = reconciled.transactions;
-        this.accounts = reconciled.accounts;
-        this.categories = reconciled.categories;
-        this.lastSyncReport = reconciled.report;
-        this.syncStatus = 'Synced';
-        this.persistState();
-        return reconciled.report;
-      } finally {
-        await conn.close();
-      }
+        await conn.open();
+        try {
+          const pragmaCheck = conn.verifyPragmas();
+          const reconciled = await conn.withAtomicTransaction(() => {
+            const parsedVault = parseRealbyteSqliteVault(vaultInput);
+            return reconcileRealbyteSync(
+              {
+                transactions: this.transactions,
+                accounts: this.accounts,
+                categories: this.categories
+              },
+              parsedVault,
+              'realbyte_sqlite_backup',
+              pragmaCheck.walMode,
+              { adjustAccountBalances: true }
+            );
+          });
+
+          this.transactions = reconciled.transactions;
+          this.accounts = reconciled.accounts;
+          this.categories = reconciled.categories;
+          this.lastSyncReport = reconciled.report;
+          this.syncStatus = 'Synced';
+          this.persistState();
+          return reconciled.report;
+        } finally {
+          await conn.close();
+        }
+      });
     },
 
     importBankStatement(

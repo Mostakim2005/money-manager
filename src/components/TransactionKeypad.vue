@@ -1,11 +1,14 @@
 <template>
   <div
     v-if="modelValue"
-    class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Quick log transaction"
+    class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto overscroll-contain"
     @click.self="close"
   >
     <div
-      class="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden my-auto transition-all"
+      class="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-lg shadow-2xl flex flex-col overflow-hidden my-auto transition-[background-color,border-color]"
     >
       <!-- Modal Header: Mode Tabs & Dismiss -->
       <div class="px-5 pt-4 pb-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-900/95">
@@ -14,9 +17,9 @@
           <button
             type="button"
             @click="setTransactionType('expense')"
-            class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all"
+            class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-[background-color,color] duration-150"
             :class="currentType === 'expense'
-              ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25 ring-1 ring-rose-400/50'
+              ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/25 ring-1 ring-rose-400/50'
               : 'text-slate-400 hover:text-slate-200'"
           >
             Expense
@@ -24,9 +27,9 @@
           <button
             type="button"
             @click="setTransactionType('income')"
-            class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all"
+            class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-[background-color,color] duration-150"
             :class="currentType === 'income'
-              ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25 ring-1 ring-emerald-400/50'
+              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/25 ring-1 ring-emerald-400/50'
               : 'text-slate-400 hover:text-slate-200'"
           >
             Income
@@ -34,9 +37,9 @@
           <button
             type="button"
             @click="setTransactionType('transfer')"
-            class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all"
+            class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-[background-color,color] duration-150"
             :class="currentType === 'transfer'
-              ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/25 ring-1 ring-sky-400/50'
+              ? 'bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-600/25 ring-1 ring-sky-400/50'
               : 'text-slate-400 hover:text-slate-200'"
           >
             Transfer
@@ -47,7 +50,7 @@
         <button
           type="button"
           @click="close"
-          class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm transition-all border border-slate-700/60"
+          class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm transition-[background-color,color] duration-150 border border-slate-700/60"
           aria-label="Close"
         >
           ✕
@@ -67,13 +70,13 @@
 
           <div class="flex items-baseline justify-between gap-3">
             <!-- Typed Math Expression -->
-            <div class="text-base sm:text-lg font-mono text-slate-300 truncate max-w-[55%]">
+            <div class="text-base sm:text-lg font-mono text-slate-300 truncate max-w-[55%] tabular-nums">
               {{ expression || '0' }}
             </div>
 
             <!-- Evaluated BDT Total -->
             <div
-              class="text-2xl sm:text-3xl font-extrabold tracking-tight"
+              class="text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums"
               :class="currentType === 'expense' ? 'text-rose-400' : currentType === 'income' ? 'text-emerald-400' : 'text-sky-400'"
             >
               {{ currentType === 'expense' ? '-' : currentType === 'income' ? '+' : '' }}৳{{ evaluatedAmount.toLocaleString('en-US') }}
@@ -85,7 +88,7 @@
         <div v-if="currentType !== 'transfer'" class="space-y-1.5">
           <div class="flex items-center justify-between">
             <label class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Category</label>
-            <span class="text-[10px] text-slate-500">{{ availableCategories.length }} available</span>
+            <span class="text-[10px] text-slate-500 tabular-nums">{{ availableCategories.length }} available</span>
           </div>
           <div class="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
             <button
@@ -93,7 +96,7 @@
               :key="cat.id"
               type="button"
               @click="selectedCategoryId = cat.id"
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-[background-color,border-color,color] duration-150 border"
               :class="selectedCategoryId === cat.id
                 ? 'bg-slate-800 text-white border-white/60 ring-2 ring-white/20 shadow-md'
                 : 'bg-slate-950/60 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'"
@@ -120,14 +123,14 @@
                 :key="'src-' + acc.id"
                 type="button"
                 @click="selectSourceAccount(acc.id)"
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-[background-color,border-color,color] duration-150 border"
                 :class="selectedAccountId === acc.id
                   ? 'bg-slate-800 text-white border-sky-400/80 ring-2 ring-sky-400/30 shadow-md'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'"
               >
                 <span>{{ getAccountIcon(acc) }}</span>
                 <span>{{ acc.name }}</span>
-                <span class="text-[10px] text-slate-400 font-normal">৳{{ acc.balance.toLocaleString('en-US') }}</span>
+                <span class="text-[10px] text-slate-400 font-normal tabular-nums">৳{{ acc.balance.toLocaleString('en-US') }}</span>
               </button>
             </div>
           </div>
@@ -143,27 +146,27 @@
                 :key="'tgt-' + acc.id"
                 type="button"
                 @click="selectedTargetAccountId = acc.id"
-                class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-[background-color,border-color,color] duration-150 border"
                 :class="selectedTargetAccountId === acc.id
                   ? 'bg-slate-800 text-white border-emerald-400/80 ring-2 ring-emerald-400/30 shadow-md'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'"
               >
                 <span>{{ getAccountIcon(acc) }}</span>
                 <span>{{ acc.name }}</span>
-                <span class="text-[10px] text-slate-400 font-normal">৳{{ acc.balance.toLocaleString('en-US') }}</span>
+                <span class="text-[10px] text-slate-400 font-normal tabular-nums">৳{{ acc.balance.toLocaleString('en-US') }}</span>
               </button>
             </div>
           </div>
         </div>
 
-        <!-- Date, Time, Payee/Description, and Note Inputs -->
+        <!-- Date, Time, Payee/Description, and Note Inputs (text-base sm:text-xs to prevent iOS/Android zoom) -->
         <div class="grid grid-cols-2 gap-2.5">
           <div>
             <label class="block text-[11px] font-semibold text-slate-300 mb-1">Date</label>
             <input
               v-model="txnDate"
               type="date"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base sm:text-xs text-white focus:outline-none focus:border-slate-600"
             />
           </div>
           <div>
@@ -171,7 +174,7 @@
             <input
               v-model="txnTime"
               type="time"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base sm:text-xs text-white focus:outline-none focus:border-slate-600"
             />
           </div>
           <div>
@@ -179,7 +182,7 @@
             <input
               v-model="txnDescription"
               placeholder="e.g. Unimart, Fuel, Salary"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-600"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-600"
             />
           </div>
           <div>
@@ -187,7 +190,7 @@
             <input
               v-model="txnNote"
               placeholder="e.g. Weekly groceries"
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-600"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base sm:text-xs text-white placeholder-slate-500 focus:outline-none focus:border-slate-600"
             />
           </div>
         </div>
@@ -199,28 +202,28 @@
             <button
               type="button"
               @click="handleClear"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800/80 hover:bg-slate-700/80 text-rose-400 border border-rose-500/30 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800/80 hover:bg-slate-700/80 text-rose-400 border border-rose-500/30 shadow-sm"
             >
               C
             </button>
             <button
               type="button"
               @click="appendOperator('/')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800/90 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800/90 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 shadow-sm"
             >
               ÷
             </button>
             <button
               type="button"
               @click="appendOperator('*')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800/90 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800/90 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 shadow-sm"
             >
               ×
             </button>
             <button
               type="button"
               @click="handleBackspace"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800/80 hover:bg-slate-700/80 text-amber-400 border border-amber-500/30 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800/80 hover:bg-slate-700/80 text-amber-400 border border-amber-500/30 shadow-sm"
             >
               ⌫
             </button>
@@ -229,28 +232,28 @@
             <button
               type="button"
               @click="appendDigit('7')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               7
             </button>
             <button
               type="button"
               @click="appendDigit('8')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               8
             </button>
             <button
               type="button"
               @click="appendDigit('9')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               9
             </button>
             <button
               type="button"
               @click="appendOperator('-')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800/90 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800/90 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 shadow-sm"
             >
               −
             </button>
@@ -259,28 +262,28 @@
             <button
               type="button"
               @click="appendDigit('4')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               4
             </button>
             <button
               type="button"
               @click="appendDigit('5')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               5
             </button>
             <button
               type="button"
               @click="appendDigit('6')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               6
             </button>
             <button
               type="button"
               @click="appendOperator('+')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800/90 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800/90 text-amber-400 hover:bg-amber-500/20 border border-amber-500/30 shadow-sm"
             >
               +
             </button>
@@ -289,28 +292,28 @@
             <button
               type="button"
               @click="appendDigit('1')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               1
             </button>
             <button
               type="button"
               @click="appendDigit('2')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               2
             </button>
             <button
               type="button"
               @click="appendDigit('3')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               3
             </button>
             <button
               type="button"
               @click="handleEquals"
-              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-all active:scale-[0.97] flex items-center justify-center select-none bg-sky-500/20 text-sky-400 hover:bg-sky-500/30 border border-sky-500/40 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-lg transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-sky-600/20 text-sky-400 hover:bg-sky-600/30 border border-sky-500/40 shadow-sm"
             >
               =
             </button>
@@ -319,14 +322,14 @@
             <button
               type="button"
               @click="appendDigit('0')"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm tabular-nums"
             >
               0
             </button>
             <button
               type="button"
               @click="appendDot"
-              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-all active:scale-[0.97] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
+              class="h-11 sm:h-12 rounded-xl font-bold text-base transition-[background-color,border-color,color,transform] duration-150 enabled:active:scale-[0.96] flex items-center justify-center select-none bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700/60 shadow-sm"
             >
               .
             </button>
@@ -334,11 +337,11 @@
               type="button"
               @click="handleSave"
               :disabled="evaluatedAmount <= 0"
-              class="col-span-2 h-11 sm:h-12 rounded-xl font-bold text-sm shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+              class="col-span-2 h-11 sm:h-12 rounded-xl font-bold text-sm shadow-xl flex items-center justify-center gap-2 transition-[background-color,color,transform] duration-150 enabled:active:scale-[0.96] disabled:opacity-40 disabled:cursor-not-allowed"
               :class="saveBtnClass"
             >
               <span>✓ Save</span>
-              <span class="text-xs font-semibold opacity-95">৳{{ evaluatedAmount.toLocaleString('en-US') }}</span>
+              <span class="text-xs font-semibold opacity-95 tabular-nums">৳{{ evaluatedAmount.toLocaleString('en-US') }}</span>
             </button>
           </div>
         </div>

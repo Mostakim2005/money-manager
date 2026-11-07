@@ -25,7 +25,7 @@
         <button
           type="button"
           @click="showAddModal = true"
-          class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs shadow-lg transition-all whitespace-nowrap flex items-center gap-1"
+          class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-lg transition-all whitespace-nowrap flex items-center gap-1"
         >
           <span>+</span> Add Transaction
         </button>
@@ -71,7 +71,7 @@
             </div>
 
             <div class="text-xs text-slate-400 flex items-center gap-2 mt-0.5 flex-wrap">
-              <span>{{ txn.date }}</span>
+              <span class="tabular-nums">{{ txn.date }}</span>
               <span v-if="txn.type !== 'transfer'">• {{ getAccount(txn.accountId)?.name }}</span>
               <span v-if="txn.note">• {{ txn.note }}</span>
 
@@ -101,22 +101,32 @@
         <div class="flex items-center gap-3 flex-shrink-0">
           <div class="text-right">
             <div
-              class="text-sm font-bold"
+              class="text-sm font-bold tabular-nums"
               :class="txn.type === 'income' ? 'text-emerald-400' : txn.type === 'expense' ? 'text-rose-400' : 'text-sky-400'"
             >
               {{ txn.type === 'income' ? '+' : txn.type === 'expense' ? '-' : '⇄ ' }}{{ formatBDT(txn.amount) }}
             </div>
-            <div class="text-[10px] text-slate-500">{{ txn.time || '12:00' }}</div>
+            <div class="text-[10px] text-slate-500 tabular-nums">{{ txn.time || '12:00' }}</div>
           </div>
 
-          <!-- Compact Action Buttons: Split & Delete -->
+          <!-- Compact Action Buttons: Edit, Split & Delete -->
           <div class="flex items-center gap-1.5 border-l border-slate-700/60 pl-2">
+            <button
+              type="button"
+              @click="openEditModal(txn)"
+              class="w-7 h-7 rounded-lg bg-slate-900 border border-slate-700 text-slate-400 hover:text-sky-400 hover:border-sky-500/50 flex items-center justify-center text-xs transition-all"
+              title="Edit transaction"
+              aria-label="Edit transaction"
+            >
+              ✏️
+            </button>
             <button
               v-if="txn.type !== 'transfer'"
               type="button"
               @click="openSplitModal(txn)"
               class="px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 text-xs font-semibold transition-all flex items-center gap-1"
               title="Split transaction across 2 categories"
+              aria-label="Split transaction"
             >
               <span>✂️</span> <span class="hidden sm:inline text-[11px]">Split</span>
             </button>
@@ -125,6 +135,7 @@
               @click="handleDeleteTransaction(txn.id)"
               class="w-7 h-7 rounded-lg bg-slate-900 border border-slate-700 text-slate-400 hover:text-rose-400 hover:border-rose-500/50 flex items-center justify-center text-xs transition-all"
               title="Delete transaction (reverses account balance)"
+              aria-label="Delete transaction"
             >
               🗑️
             </button>
@@ -145,7 +156,10 @@
     <!-- Bank Statement Importer Modal (CSV, QIF, OFX, CAMT) -->
     <div
       v-if="showImportModal"
-      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Import Bank Statement"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto overscroll-contain"
       @click.self="showImportModal = false"
     >
       <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 w-full max-w-lg shadow-2xl space-y-4 text-white">
@@ -162,6 +176,7 @@
             type="button"
             @click="showImportModal = false"
             class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm"
+            aria-label="Close import modal"
           >
             ✕
           </button>
@@ -176,7 +191,7 @@
               @click="importFormat = 'ofx'"
               class="py-2 px-2 rounded-xl text-xs font-semibold border transition-all text-center"
               :class="importFormat === 'ofx'
-                ? 'bg-rose-500 text-white border-rose-400 shadow-md'
+                ? 'bg-rose-600 text-white border-rose-500 shadow-md'
                 : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'"
             >
               OFX / QFX
@@ -186,7 +201,7 @@
               @click="importFormat = 'camt'"
               class="py-2 px-2 rounded-xl text-xs font-semibold border transition-all text-center"
               :class="importFormat === 'camt'
-                ? 'bg-rose-500 text-white border-rose-400 shadow-md'
+                ? 'bg-rose-600 text-white border-rose-500 shadow-md'
                 : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'"
             >
               CAMT.053
@@ -196,7 +211,7 @@
               @click="importFormat = 'csv'"
               class="py-2 px-2 rounded-xl text-xs font-semibold border transition-all text-center"
               :class="importFormat === 'csv'
-                ? 'bg-rose-500 text-white border-rose-400 shadow-md'
+                ? 'bg-rose-600 text-white border-rose-500 shadow-md'
                 : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'"
             >
               CSV
@@ -206,7 +221,7 @@
               @click="importFormat = 'qif'"
               class="py-2 px-2 rounded-xl text-xs font-semibold border transition-all text-center"
               :class="importFormat === 'qif'
-                ? 'bg-rose-500 text-white border-rose-400 shadow-md'
+                ? 'bg-rose-600 text-white border-rose-500 shadow-md'
                 : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'"
             >
               QIF
@@ -280,11 +295,11 @@
           <div class="grid grid-cols-2 gap-2 text-slate-300 pt-1">
             <div class="bg-slate-950/60 p-2 rounded-xl">
               <span class="text-slate-400 text-[11px]">Inserted Records:</span>
-              <div class="text-base font-bold text-emerald-400">{{ importReport.insertedTransactions }}</div>
+              <div class="text-base font-bold text-emerald-400 tabular-nums">{{ importReport.insertedTransactions }}</div>
             </div>
             <div class="bg-slate-950/60 p-2 rounded-xl">
               <span class="text-slate-400 text-[11px]">Skipped Duplicates:</span>
-              <div class="text-base font-bold text-slate-200">{{ importReport.skippedDuplicates }}</div>
+              <div class="text-base font-bold text-slate-200 tabular-nums">{{ importReport.skippedDuplicates }}</div>
             </div>
           </div>
         </div>
@@ -306,7 +321,7 @@
             type="button"
             @click="handleExecuteImport"
             :disabled="!importContent.trim()"
-            class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-lg transition-all"
+            class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-lg transition-all"
           >
             Execute Import
           </button>
@@ -317,7 +332,10 @@
     <!-- Split Transaction Modal -->
     <div
       v-if="showSplitModal && splitModalTxn"
-      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Split transaction"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto overscroll-contain"
       @click.self="showSplitModal = false"
     >
       <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 w-full max-w-md shadow-2xl space-y-4 text-white">
@@ -326,13 +344,14 @@
             <span class="text-lg">✂️</span>
             <div>
               <h3 class="text-base font-bold text-white">Split Transaction</h3>
-              <p class="text-xs text-slate-400">Split ৳{{ splitModalTxn.amount.toLocaleString() }} across 2 categories</p>
+              <p class="text-xs text-slate-400">Split ৳<span class="tabular-nums">{{ splitModalTxn.amount.toLocaleString() }}</span> across 2 categories</p>
             </div>
           </div>
           <button
             type="button"
             @click="showSplitModal = false"
             class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm"
+            aria-label="Close split modal"
           >
             ✕
           </button>
@@ -360,7 +379,7 @@
                 type="number"
                 min="1"
                 @input="autoBalanceSplit2"
-                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-white"
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-white tabular-nums"
               />
             </div>
           </div>
@@ -394,7 +413,7 @@
                 v-model.number="split2.amount"
                 type="number"
                 min="1"
-                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-white"
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-bold text-white tabular-nums"
               />
             </div>
           </div>
@@ -411,7 +430,7 @@
         <div class="flex items-center justify-between text-xs p-2.5 rounded-xl bg-slate-950 border border-slate-800">
           <span class="text-slate-400">Total Allocated:</span>
           <span
-            class="font-bold font-mono"
+            class="font-bold font-mono tabular-nums"
             :class="split1.amount + split2.amount === splitModalTxn.amount ? 'text-emerald-400' : 'text-rose-400'"
           >
             ৳{{ (split1.amount + split2.amount).toLocaleString() }} / ৳{{ splitModalTxn.amount.toLocaleString() }}
@@ -435,9 +454,139 @@
             type="button"
             @click="handleSaveSplit"
             :disabled="split1.amount + split2.amount !== splitModalTxn.amount"
-            class="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-lg transition-all"
+            class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-lg transition-all"
           >
             Confirm Split
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Transaction Modal -->
+    <div
+      v-if="showEditModal && editingTxn"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Edit transaction"
+      class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto overscroll-contain"
+      @click.self="showEditModal = false"
+    >
+      <div class="bg-slate-900 border border-slate-700/80 rounded-3xl p-5 w-full max-w-md shadow-2xl space-y-4 text-white">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">✏️</span>
+            <div>
+              <h3 class="text-base font-bold text-white">Edit Transaction</h3>
+              <p class="text-xs text-slate-400">Modify transaction details and adjust accounts</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="showEditModal = false"
+            class="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center font-bold text-sm"
+            aria-label="Close edit modal"
+          >
+            ✕
+          </button>
+        </div>
+
+        <!-- Type Selector (if not transfer) -->
+        <div v-if="editingTxn.type !== 'transfer'" class="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            @click="editType = 'expense'"
+            class="py-2 rounded-xl text-xs font-bold border transition-all"
+            :class="editType === 'expense' ? 'bg-rose-600 text-white border-rose-500 shadow-md' : 'bg-slate-950 text-slate-400 border-slate-800'"
+          >
+            Expense
+          </button>
+          <button
+            type="button"
+            @click="editType = 'income'"
+            class="py-2 rounded-xl text-xs font-bold border transition-all"
+            :class="editType === 'income' ? 'bg-emerald-600 text-white border-emerald-500 shadow-md' : 'bg-slate-950 text-slate-400 border-slate-800'"
+          >
+            Income
+          </button>
+        </div>
+
+        <!-- Amount & Date -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Amount (৳)</label>
+            <input
+              v-model.number="editAmount"
+              type="number"
+              min="1"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white tabular-nums focus:outline-none focus:border-slate-600"
+            />
+          </div>
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Date</label>
+            <input
+              v-model="editDate"
+              type="date"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white tabular-nums focus:outline-none focus:border-slate-600"
+            />
+          </div>
+        </div>
+
+        <!-- Account & Category -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Account</label>
+            <select
+              v-model="editAccountId"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            >
+              <option v-for="acc in store.accounts" :key="acc.id" :value="acc.id">
+                {{ acc.name }}
+              </option>
+            </select>
+          </div>
+          <div v-if="editingTxn.type !== 'transfer'">
+            <label class="block text-[10px] text-slate-400 mb-1">Category</label>
+            <select
+              v-model="editCategoryId"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            >
+              <option
+                v-for="cat in store.categories.filter(c => c.type === editType)"
+                :key="cat.id"
+                :value="cat.id"
+              >
+                {{ cat.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Note -->
+        <div>
+          <label class="block text-[10px] text-slate-400 mb-1">Note / Description</label>
+          <input
+            v-model="editNote"
+            placeholder="Transaction note"
+            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+          />
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+          <button
+            type="button"
+            @click="showEditModal = false"
+            class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold transition-all"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            @click="handleSaveEdit"
+            :disabled="editAmount <= 0"
+            class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold shadow-lg transition-all"
+          >
+            Save Changes
           </button>
         </div>
       </div>
@@ -469,6 +618,16 @@ const splitModalTxn = ref<Transaction | null>(null);
 const split1 = ref({ categoryId: '', amount: 0, note: '' });
 const split2 = ref({ categoryId: '', amount: 0, note: '' });
 const splitError = ref('');
+
+// Edit Transaction State
+const showEditModal = ref(false);
+const editingTxn = ref<Transaction | null>(null);
+const editDate = ref('');
+const editType = ref<TransactionType>('expense');
+const editAmount = ref(0);
+const editAccountId = ref('');
+const editCategoryId = ref('');
+const editNote = ref('');
 
 const filteredTransactions = computed(() => {
   if (!searchQuery.value.trim()) return store.transactions;
@@ -536,6 +695,32 @@ function downloadCsv() {
 
 function handleDeleteTransaction(id: string) {
   store.deleteTransaction(id);
+}
+
+function openEditModal(txn: Transaction) {
+  editingTxn.value = txn;
+  editDate.value = txn.date;
+  editType.value = txn.type;
+  editAmount.value = txn.amount;
+  editAccountId.value = txn.accountId;
+  editCategoryId.value = txn.categoryId;
+  editNote.value = txn.note || txn.description || '';
+  showEditModal.value = true;
+}
+
+function handleSaveEdit() {
+  if (!editingTxn.value) return;
+  store.editTransaction(editingTxn.value.id, {
+    date: editDate.value,
+    type: editType.value,
+    amount: editAmount.value,
+    accountId: editAccountId.value,
+    categoryId: editCategoryId.value,
+    note: editNote.value,
+    description: editNote.value
+  });
+  showEditModal.value = false;
+  editingTxn.value = null;
 }
 
 function openSplitModal(txn: Transaction) {

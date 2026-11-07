@@ -3,18 +3,28 @@
     <!-- Month Header & Summary Banner (Realbyte Style) -->
     <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 shadow-xl">
       <div class="flex items-center justify-between mb-3">
-        <button @click="changeMonth(-1)" class="p-2 hover:bg-slate-700 rounded-lg text-slate-300">
+        <button
+          type="button"
+          @click="changeMonth(-1)"
+          aria-label="Previous month"
+          class="p-2 hover:bg-slate-700 rounded-lg text-slate-300 transition-colors"
+        >
           ◀
         </button>
         <h2 class="text-xl font-bold tracking-tight text-white">
           {{ monthName }} {{ store.selectedYear }}
         </h2>
-        <button @click="changeMonth(1)" class="p-2 hover:bg-slate-700 rounded-lg text-slate-300">
+        <button
+          type="button"
+          @click="changeMonth(1)"
+          aria-label="Next month"
+          class="p-2 hover:bg-slate-700 rounded-lg text-slate-300 transition-colors"
+        >
           ▶
         </button>
       </div>
 
-      <div class="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-700/60">
+      <div class="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-700/60 tabular-nums">
         <div class="bg-slate-900/50 p-2.5 rounded-xl">
           <div class="text-xs font-medium text-slate-400">Income</div>
           <div class="text-base font-bold text-emerald-400">+{{ formatBDT(monthSummary.totalIncome) }}</div>
@@ -46,16 +56,16 @@
       </div>
 
       <!-- Calendar Days -->
-      <div class="grid grid-cols-7 gap-1.5">
+      <div class="grid grid-cols-7 gap-1 sm:gap-1.5">
         <!-- Padding empty cells for first day of month -->
-        <div v-for="pad in startPaddingDays" :key="'pad-' + pad" class="h-20 bg-slate-900/20 rounded-xl opacity-30"></div>
+        <div v-for="pad in startPaddingDays" :key="'pad-' + pad" class="min-h-[4.5rem] sm:min-h-[5.25rem] min-w-0 bg-slate-900/20 rounded-xl opacity-30"></div>
 
         <!-- Real days -->
         <div
           v-for="d in daysInMonth"
           :key="'day-' + d"
           @click="selectDate(d)"
-          class="h-20 p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between"
+          class="min-h-[4.5rem] sm:min-h-[5.25rem] min-w-0 overflow-hidden p-1 sm:p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col justify-between"
           :class="[
             selectedDateStr === getDateStr(d)
               ? 'border-rose-500 bg-rose-500/10 ring-2 ring-rose-500/40'
@@ -63,17 +73,17 @@
           ]"
         >
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold" :class="isWeekend(d) ? 'text-rose-400' : 'text-slate-300'">
+            <span class="text-xs font-bold tabular-nums" :class="isWeekend(d) ? 'text-rose-400' : 'text-slate-300'">
               {{ d }}
             </span>
             <span v-if="getDaySummary(d)?.transactionCount" class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
           </div>
 
-          <div class="text-right space-y-0.5 overflow-hidden">
-            <div v-if="getDaySummary(d)?.income" class="text-[10px] font-semibold text-emerald-400 leading-tight">
+          <div class="text-right space-y-0.5 overflow-hidden tabular-nums">
+            <div v-if="getDaySummary(d)?.income" class="text-[9px] sm:text-[10px] font-semibold text-emerald-400 leading-tight truncate">
               +{{ formatCompact(getDaySummary(d)!.income) }}
             </div>
-            <div v-if="getDaySummary(d)?.expense" class="text-[10px] font-semibold text-rose-400 leading-tight">
+            <div v-if="getDaySummary(d)?.expense" class="text-[9px] sm:text-[10px] font-semibold text-rose-400 leading-tight truncate">
               -{{ formatCompact(getDaySummary(d)!.expense) }}
             </div>
           </div>
@@ -88,14 +98,14 @@
           <h3 class="font-bold text-white text-base">
             Transactions on {{ selectedDateStr }}
           </h3>
-          <span class="text-xs text-slate-400">
+          <span class="text-xs text-slate-400 tabular-nums">
             {{ selectedDayTransactions.length }} recorded
           </span>
         </div>
         <button
           type="button"
           @click="showKeypad = true"
-          class="px-3.5 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs shadow-md transition-all flex items-center gap-1"
+          class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-md transition-all flex items-center gap-1 active:scale-95"
         >
           <span>+</span> Log on {{ selectedDateStr }}
         </button>
@@ -139,7 +149,7 @@
             </div>
           </div>
 
-          <div class="text-right">
+          <div class="text-right tabular-nums">
             <div
               class="text-sm font-bold"
               :class="txn.type === 'income' ? 'text-emerald-400' : txn.type === 'expense' ? 'text-rose-400' : 'text-sky-400'"
