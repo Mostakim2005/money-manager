@@ -55,7 +55,7 @@ jobs:
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
         with:
-          working-directory: src-tauri
+          workspaces: src-tauri
 
       - name: Install dependencies
         run: npm ci
@@ -63,27 +63,35 @@ jobs:
       - name: Build Web Assets
         run: npm run build
 
-      - name: Build Tauri Desktop Portable Application (.exe)
-        run: npx tauri build --no-bundle
+      - name: Build Tauri Desktop Portable & Installer Executables (.exe / .msi)
+        run: npx tauri build --bundles nsis,msi
 
-      - name: Prepare Windows Portable Artifact
+      - name: Prepare Windows Portable & Installer Artifacts
         shell: bash
         run: |
           mkdir -p artifacts
           cp src-tauri/target/release/money-manager.exe artifacts/money-manager-windows-portable.exe
+          setup_exe=$(find src-tauri/target/release/bundle/nsis -name '*-setup.exe' | head -n 1)
+          if [ -n "$setup_exe" ]; then
+            cp "$setup_exe" artifacts/money-manager-windows-setup.exe
+          fi
+          msi_file=$(find src-tauri/target/release/bundle/msi -name '*.msi' | head -n 1)
+          if [ -n "$msi_file" ]; then
+            cp "$msi_file" artifacts/money-manager-windows-installer.msi
+          fi
 
-      - name: Upload Windows Portable Artifact
+      - name: Upload Windows Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: money-manager-windows-portable
-          path: artifacts/money-manager-windows-portable.exe
+          name: money-manager-windows-binaries
+          path: artifacts/money-manager-windows-*
           if-no-files-found: error
 
-      - name: Attach Portable Windows .exe to GitHub Release
+      - name: Attach Windows Portable .exe & Installers to GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/v')
         with:
-          files: artifacts/money-manager-windows-portable.exe
+          files: artifacts/money-manager-windows-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -104,7 +112,7 @@ jobs:
           cache: 'npm'
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -117,7 +125,7 @@ jobs:
       - name: Rust Cache
         uses: swatinem/rust-cache@v2
         with:
-          working-directory: src-tauri
+          workspaces: src-tauri
 
       - name: Install Android build tools and NDK
         run: |
@@ -133,7 +141,9 @@ jobs:
         run: npm run build
 
       - name: Initialize Android project in CI
-        run: npx tauri android init --ci --skip-targets-install
+        run: |
+          npx tauri android init --ci --skip-targets-install
+          printf "\nandroid.newDsl=false\nandroid.sync.suppressAgpWarnings=DEPRECATED_DSL\n" >> src-tauri/gen/android/gradle.properties
 
       - name: Build release APK
         run: npx tauri android build --ci --apk --target aarch64

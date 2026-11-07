@@ -1,12 +1,13 @@
 {
   "name": "money-manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Cross-platform Personal Finance & Money Manager with Realbyte parity, Sanchaypatra profit tracking, and cloud sync",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "tauri": "tauri",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint src/ --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --ignore-path .gitignore",
     "test": "vitest run"
