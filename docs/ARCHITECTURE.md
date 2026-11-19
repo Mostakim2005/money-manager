@@ -2,47 +2,51 @@
 > **1-Line Summary:** Plain-English architectural blueprint and visual component maps for the Electron + Vue 3 + `better-sqlite3` WAL Money Manager desktop application and Realbyte sync architecture.
 
 ## 1. High-Level Visual System Map
+* **Plain-English Overview:** Mobile logging stays on the Realbyte Android app, which shares data over Wi-Fi (`:10000`) or Google Drive / Mega `.sqlite` files into Electron's Node main process (`better-sqlite3` WAL + CORS-free HTTP proxy), feeding the reactive Vue 3 + Pinia desktop workspace.
 
 ```mermaid
 flowchart TB
+    %% Color Definitions (Obsidian & GitHub compatible)
+    classDef startNode fill:#1d4ed8,stroke:#1e3a8a,color:#ffffff
+    classDef processNode fill:#0f766e,stroke:#115e59,color:#ffffff
+    classDef outputNode fill:#15803d,stroke:#14532d,color:#ffffff
+
     subgraph Mobile["Android Mobile Anchor"]
-        RealbyteApp["Realbyte Money Manager\n(Tactile Mobile Capture)"]
-        MobileSQLite["money_android.sqlite\n(INOUTCOME / ASSETS / ZCATEGORY)"]
-        WifiServer["Realbyte Wi-Fi PC Manager\nHTTP Server (:10000)"]
-        RealbyteApp --> MobileSQLite
-        MobileSQLite --> WifiServer
+        RealbyteApp(["Realbyte Money Manager"]):::startNode -->|writes locally| MobileSQLite[("money_android.sqlite")]:::outputNode
+        MobileSQLite -->|serves LAN HTTP :10000| WifiServer["Realbyte Wi-Fi PC Manager"]:::processNode
     end
 
     subgraph CloudSync["Zero-Cost File Mirror"]
-        DriveSync{"Google Drive or Mega\n(Backup Folder)"}
-        MobileSQLite <-->|Manual / Auto Backup| DriveSync
+        DriveSync{"Google Drive or Mega Backup"}:::processNode
+        MobileSQLite <-->|backup mirror| DriveSync
     end
 
-    subgraph ElectronMain["Electron Main Process (Node 22 + better-sqlite3)"]
-        Proxy["electron/net/realbyteProxy.ts\n(CORS-Free HTTP + Retry + HTML Guard)"]
-        BinaryReader["electron/db/realbyteReader.ts\n(Read-Only Native Binary SQLite)"]
-        WalDb["electron/db/sqliteService.ts\n(PRAGMA journal_mode=WAL + BEGIN IMMEDIATE)"]
-        LocalDb[("money_manager.sqlite\n(shared/schema/v1_core.sql)")]
-        WifiServer -->|LAN JSON Pull| Proxy
-        DriveSync -->|Local File Mirror| BinaryReader
-        WalDb <--> LocalDb
+    subgraph ElectronMain["Electron Main Process - Node 22 + better-sqlite3"]
+        Proxy["realbyteProxy.ts: CORS-Free HTTP + Retry"]:::processNode
+        BinaryReader["realbyteReader.ts: Read-Only Binary Reader"]:::processNode
+        WalDb["sqliteService.ts: PRAGMA WAL + BEGIN IMMEDIATE"]:::processNode
+        LocalDb[("money_manager.sqlite")]:::outputNode
+        WifiServer -->|JSON pull| Proxy
+        DriveSync -->|local .sqlite file| BinaryReader
+        WalDb <-->|atomic reads/writes| LocalDb
     end
 
     subgraph Renderer["Vue 3 + Pinia + Tailwind Renderer"]
-        Bridge["window.moneyApi (preload.ts\ncontextIsolation + strict CSP)"]
-        Store["Pinia Store (src/store/index.ts\nWhole-Taka roundTaka + withSyncLock)"]
-        Reconciler["reconcileRealbyteSync\n(4-Tier Multiset & LWW Reconciliation)"]
-        UI["Adaptive Desktop Shell\n(Sidebar + Global Keypad + Feature Flags)"]
-        Proxy --> Bridge
-        BinaryReader --> Bridge
-        Bridge <--> Store
-        Store --> Reconciler
-        Store --> UI
+        Bridge["window.moneyApi via preload.ts"]:::processNode
+        Store["Pinia Store: roundTaka + withSyncLock"]:::processNode
+        Reconciler["reconcileRealbyteSync: 4-Tier Multiset"]:::processNode
+        UI(["Adaptive Desktop Shell + Feature Flags"]):::outputNode
+        Proxy -->|IPC| Bridge
+        BinaryReader -->|IPC| Bridge
+        Bridge <-->|hydrated state| Store
+        Store -->|deduped merge| Reconciler
+        Store -->|renders| UI
     end
 
-    subgraph CI["GitHub Actions Cloud Build"]
-        Actions["Verify + Build Portable .exe\n(electron-builder --win portable)"]
-        Actions --> Release["money-manager-windows-portable.exe"]
+    subgraph Legend["Legend (Color Guide)"]
+        L1([Blue = User Capture Entry]):::startNode
+        L2[Teal = Sync Proxy, IPC & Core Logic]:::processNode
+        L3[(Green = Persistent SQLite & Rendered UI)]:::outputNode
     end
 ```
 
@@ -76,25 +80,29 @@ flowchart TB
 
 ### [SUBSYSTEM: Realbyte-CORS-Free-Sync-And-Reconciliation] | Aliases: realbyte proxy, dry run sync, multiset reconciliation, endpoint probe, sync logs
 > **1-Line Summary:** Node-level Realbyte HTTP proxy with endpoint probing, 90-day chunked historical fetching, HTML session-expired detection, and non-mutating Dry-Run reconciliation previews.
+* **How It Works (Plain English):** Settings invokes `probeRealbyteEndpoints` or `syncFromPcManager` through the Electron Node proxy, splitting large date scopes into 90-day chunks while guarding against inactive HTML login screens. Incoming rows are normalized (`DO_TYPE` 3/4 transfer pairs collapsed), previewed safely in Dry-Run mode, and finally merged into `money_manager.sqlite` + `sync_logs`.
 * **Data Flow Diagram:**
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    participant UI as SettingsTab.vue
-    participant Store as Pinia Store
-    participant Proxy as electron/net/realbyteProxy.ts
-    participant Reconciler as syncCoordinator.ts
-    participant DB as MoneySqliteService
+flowchart LR
+    %% Color Definitions (Obsidian & GitHub compatible)
+    classDef startNode fill:#1d4ed8,stroke:#1e3a8a,color:#ffffff
+    classDef processNode fill:#0f766e,stroke:#115e59,color:#ffffff
+    classDef outputNode fill:#15803d,stroke:#14532d,color:#ffffff
+    classDef trapNode fill:#b91c1c,stroke:#7f1d1d,color:#ffffff
 
-    UI->>Proxy: probeEndpoints() / Dry-Run Sync
-    Proxy->>Phone: GET /moneyBook/ledger/select.do (90-day chunks)
-    Phone-->>Proxy: JSON Rows (or HTML -> REALBYTE_SESSION_INACTIVE)
-    Proxy-->>Store: normalizePcManagerData (DO_TYPE 3/4 collapse)
-    Store->>Reconciler: reconcileRealbyteSync(..., dryRun: true)
-    Reconciler-->>UI: Preview (+New / ~Updated / =Skipped / -Deleted)
-    UI->>Store: Commit Sync
-    Store->>DB: saveFullState() + appendSyncLog() inside BEGIN IMMEDIATE
+    UI([Start: Settings Sync or Probe]):::startNode -->|90-day chunks| Proxy["realbyteProxy.ts"]:::processNode
+    Proxy -.->|if HTML response| HtmlTrap["REALBYTE_SESSION_INACTIVE Guard"]:::trapNode
+    Proxy -->|JSON rows| Norm["normalizePcManagerData"]:::processNode
+    Norm -->|dryRun or live| Reconciler["reconcileRealbyteSync"]:::processNode
+    Reconciler -->|commit inside BEGIN IMMEDIATE| DB(["Output: SQLite WAL + sync_logs"]):::outputNode
+
+    subgraph Legend["Legend (Color Guide)"]
+        L1([Blue = User Sync Trigger]):::startNode
+        L2[Teal = Proxy, Normalizer & Reconciler]:::processNode
+        L3([Green = Committed State & Audit Log]):::outputNode
+        L4[Red = HTML Session Guard]:::trapNode
+    end
 ```
 
 * **Code Anchors (Grep Targets):**

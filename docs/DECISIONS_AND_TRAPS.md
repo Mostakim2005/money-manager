@@ -20,17 +20,28 @@
 * **Options Considered:**
   * **Option A (Rejected - Tauri 2 WebView + `localStorage`):** Browser `fetch()` inside WebView hit CORS restrictions against Realbyte's embedded phone server, and binary `.sqlite` files required manual conversion.
   * **Option B (Chosen - Electron + `better-sqlite3` + Node HTTP Proxy):** Node Main Process handles HTTP requests (`electron/net/realbyteProxy.ts`) with zero CORS issues, reads binary Android `.sqlite` files directly (`electron/db/realbyteReader.ts`), and persists app state in local WAL SQLite (`electron/db/sqliteService.ts`).
+* **Plain-English Summary of Pivot:** WebView `fetch()` calls to Realbyte's local phone server broke on CORS and binary `.sqlite` backups required external dump scripts, so moving into Electron's Node main process solved both network proxying and native SQLite file access cleanly.
 * **Visual Pivot Map (What Failed vs. What Works):**
 
 ```mermaid
 flowchart LR
-    subgraph Rejected["Tauri 2 WebView Track (Removed)"]
-        A1["WebView fetch() to Phone :10000"] --> A2["Blocked by CORS & timeout limits"]
-        A3["Manual SQL/JSON dump conversion"] --> A4["Friction syncing money_android.sqlite"]
+    %% Color Definitions (Obsidian & GitHub compatible)
+    classDef failedNode fill:#b91c1c,stroke:#7f1d1d,color:#ffffff
+    classDef activeNode fill:#15803d,stroke:#14532d,color:#ffffff
+
+    subgraph Rejected["Tauri 2 WebView Track - Removed"]
+        A1["WebView fetch to Phone :10000"]:::failedNode -->|blocked by| A2["CORS & timeout failures"]:::failedNode
+        A3["Manual SQL/JSON dump"]:::failedNode -->|created friction| A4["Could not read binary .sqlite"]:::failedNode
     end
-    subgraph Chosen["Electron + better-sqlite3 Track (Active)"]
-        B1["Node HTTP Proxy in Main Process"] --> B2["Zero CORS + Retry + HTML Guard + Probe"]
-        B3["better-sqlite3 WAL + Read-Only Binary Reader"] --> B4["Direct .sqlite sync & atomic persistence"]
+
+    subgraph Chosen["Electron + better-sqlite3 Track - Active"]
+        B1["Node HTTP Proxy in Main Process"]:::activeNode -->|zero CORS| B2["Retry + HTML Guard + Probe"]:::activeNode
+        B3["better-sqlite3 WAL + Binary Reader"]:::activeNode -->|native I/O| B4["Direct .sqlite sync & atomic WAL"]:::activeNode
+    end
+
+    subgraph Legend["Legend (Color Guide)"]
+        L1[Red = Rejected / Broken Path]:::failedNode
+        L2[Green = Active / Working Path]:::activeNode
     end
 ```
 

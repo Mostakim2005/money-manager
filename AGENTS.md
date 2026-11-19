@@ -13,7 +13,7 @@
 * **Desktop Portable Build:** `npm run electron:build` (or tag-triggered GitHub Actions cloud build).
 
 ## 3. Repository Directory Structure & Conventions
-* `docs/` — Core documentation suite (`PRODUCT.md`, `ARCHITECTURE.md`, `DECISIONS_AND_TRAPS.md`).
+* `docs/` — Core documentation suite (`PRODUCT.md`, `ARCHITECTURE.md`, `DECISIONS_AND_TRAPS.md`, `VISUAL_LOG.md`).
 * `shared/` — Canonical SQLite schema (`v1_core.sql`), Sanchaypatra constants, and cross-platform golden test vectors (`shared/test-vectors/*.json`).
 * `src/` — Modular Vue 3 + TypeScript source files and domain engines.
 * `electron/` — Electron Main process (`main.ts`), Preload bridge (`preload.ts`), `better-sqlite3` WAL database service, and CORS-free Realbyte HTTP proxy.

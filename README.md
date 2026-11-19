@@ -98,5 +98,6 @@ npm run electron:dev
 - **[`docs/PRODUCT.md`](docs/PRODUCT.md)** — Product vision, user experience requirements, and active feature anchors.
 - **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)** — Subsystem mechanics, Mermaid dataflow diagrams, and verification commands.
 - **[`docs/DECISIONS_AND_TRAPS.md`](docs/DECISIONS_AND_TRAPS.md)** — Architectural pivot history and critical engineering traps.
+- **[`docs/VISUAL_LOG.md`](docs/VISUAL_LOG.md)** — Color-coded Obsidian & GitHub Mermaid flowcharts with plain-English feature walkthroughs.
 - **[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)** — Attribution and license notices for upstream engines and dependencies.
 - **[`LICENSE`](LICENSE)** — PolyForm Noncommercial License 1.0.0.
