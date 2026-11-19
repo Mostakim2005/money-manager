@@ -1,41 +1,48 @@
 # System Architecture (`ARCHITECTURE.md`)
-> **1-Line Summary:** Plain-English architectural blueprint and visual component maps for the cross-platform Realbyte-style Money Manager and Sanchaypatra tracking engine.
+> **1-Line Summary:** Plain-English architectural blueprint and visual component maps for the Electron + Vue 3 + `better-sqlite3` WAL Money Manager desktop application and Realbyte sync architecture.
 
 ## 1. High-Level Visual System Map
 
 ```mermaid
 flowchart TB
-    subgraph Mobile["📱 Mobile Layer (Android)"]
-        RealbyteApp["📱 Realbyte Money Manager\n(Daily Capture & Calendar Grid)"]
-        LocalSQLite["💾 money_android.sqlite\n(Local Phone Storage)"]
-        RealbyteApp --> LocalSQLite
+    subgraph Mobile["Android Mobile Anchor"]
+        RealbyteApp["Realbyte Money Manager\n(Tactile Mobile Capture)"]
+        MobileSQLite["money_android.sqlite\n(INOUTCOME / ASSETS / ZCATEGORY)"]
+        WifiServer["Realbyte Wi-Fi PC Manager\nHTTP Server (:10000)"]
+        RealbyteApp --> MobileSQLite
+        MobileSQLite --> WifiServer
     end
 
-    subgraph CloudSync["☁️ Zero-Cost Cloud Drive Sync"]
-        DriveSync{"Google Drive or Mega Drive\n(Automated Periodic Backup / Sync)"}
-        LocalSQLite <-->|Auto Backup / Restore| DriveSync
+    subgraph CloudSync["Zero-Cost File Mirror"]
+        DriveSync{"Google Drive or Mega\n(Backup Folder)"}
+        MobileSQLite <-->|Manual / Auto Backup| DriveSync
     end
 
-    subgraph Desktop["💻 Windows PC Power App"]
-        PCApp["💻 Windows Money Manager (Tauri 2 / Vue 3 or Flutter)\n(Calendar Grid Parity + Sanchaypatra Engine)"]
-        PCSQLite["💾 Synced money_android.sqlite\n(PC Local Drive Mirror)"]
-        DriveSync <-->|Desktop Drive Client| PCSQLite
-        PCSQLite <--> PCApp
+    subgraph ElectronMain["Electron Main Process (Node 22 + better-sqlite3)"]
+        Proxy["electron/net/realbyteProxy.ts\n(CORS-Free HTTP + Retry + HTML Guard)"]
+        BinaryReader["electron/db/realbyteReader.ts\n(Read-Only Native Binary SQLite)"]
+        WalDb["electron/db/sqliteService.ts\n(PRAGMA journal_mode=WAL + BEGIN IMMEDIATE)"]
+        LocalDb[("money_manager.sqlite\n(shared/schema/v1_core.sql)")]
+        WifiServer -->|LAN JSON Pull| Proxy
+        DriveSync -->|Local File Mirror| BinaryReader
+        WalDb <--> LocalDb
     end
 
-    subgraph Subsystems["⚙️ PC Power App Subsystems"]
-        CalendarEngine["📅 Calendar Matrix Engine\n(Daily Red/Green Sums)"]
-        SanchaypatraEngine["📜 Sanchaypatra Engine\n(Tenure, Slab Rates, AIT, Payouts)"]
-        DoubleEntryBridge["⚖️ Double-Entry Bridge\n(Debit/Credit Ledger Integrity)"]
-        PCApp --> CalendarEngine
-        PCApp --> SanchaypatraEngine
-        PCApp --> DoubleEntryBridge
+    subgraph Renderer["Vue 3 + Pinia + Tailwind Renderer"]
+        Bridge["window.moneyApi (preload.ts\ncontextIsolation + strict CSP)"]
+        Store["Pinia Store (src/store/index.ts\nWhole-Taka roundTaka + withSyncLock)"]
+        Reconciler["reconcileRealbyteSync\n(4-Tier Multiset & LWW Reconciliation)"]
+        UI["Adaptive Desktop Shell\n(Sidebar + Global Keypad + Feature Flags)"]
+        Proxy --> Bridge
+        BinaryReader --> Bridge
+        Bridge <--> Store
+        Store --> Reconciler
+        Store --> UI
     end
 
-    subgraph CI["🚀 Cloud Compilation (Zero Local Toolchain Bloat)"]
-        GitHubActions["GitHub Actions Runner\n(Pre-installed Flutter, MSVC, Android SDK)"]
-        Release["📦 Portable Windows .exe\n(Attached to GitHub Releases)"]
-        GitHubActions --> Release
+    subgraph CI["GitHub Actions Cloud Build"]
+        Actions["Verify + Build Portable .exe\n(electron-builder --win portable)"]
+        Actions --> Release["money-manager-windows-portable.exe"]
     end
 ```
 
@@ -43,125 +50,86 @@ flowchart TB
 
 ## 2. Tech Stack Rationale & Candidate Matrix
 
-| Layer | Recommended Tool / Library | Plain-English Reason Why |
+| Layer | Active Technology | Plain-English Reason Why |
 | --- | --- | --- |
-| **Mobile Capture Client** | **Realbyte Money Manager (Android)** | Preserves the user's preferred tactile UX, fast calculator entry, and local database without rebuilding mobile from scratch. |
-| **PC Power App Shell** | **Tauri 2 + Vue 3 / React (or Flutter Desktop)** | Tiny (~15MB), fast native Windows desktop executable with Realbyte calendar parity and custom Sanchaypatra tabs. |
-| **Core Database Engine** | **SQLite (`money_android.sqlite`)** | Universal format shared directly between Realbyte Android and the PC Power App. |
-| **Sync Protocol** | **Google Drive / Mega Drive Client** | Zero subscription cost, 100% private, automated background file syncing. |
-| **Build & Packaging Engine** | **GitHub Actions Cloud CI** | Eliminates 25–35 GB of local SDK downloads (MSVC, Android SDK, Flutter); compiles portable `.exe` in the cloud. |
+| **Mobile Capture Client** | **Realbyte Money Manager (Android)** | Preserves fast mobile logging and local `.sqlite` backup portability without building a separate mobile app first. |
+| **Desktop Shell** | **Electron + Vue 3 + TypeScript + Tailwind CSS** | Eliminates WebView CORS blocks against Realbyte `:10000`, bundles offline `@fontsource/inter`, and ships a clean portable Windows `.exe`. |
+| **Local Storage Engine** | **`better-sqlite3` (`shared/schema/v1_core.sql`)** | Native WAL-mode SQLite persistence storing whole-Taka `INTEGER` money columns and reading real binary `money_android.sqlite` backups directly. |
+| **Sync & Security** | **Node HTTP Proxy + WebCrypto AES-256-GCM** | Direct LAN HTTP polling with retry/HTML detection, 4-tier multiset deduplication, and passphrase-encrypted JSON vault backups. |
+| **Build & Packaging** | **GitHub Actions + `electron-builder`** | Compiles and packages `money-manager-windows-portable.exe` cleanly on `windows-latest` CI runners. |
 
 ---
 
 ## 3. Core Subsystems & Engineering Tricks
 
-### [SUBSYSTEM: Actual-Budget-Cherry-Picked-Engines] | Aliases: actual budget rules, auto categorization, csv ofx qif camt importer, split merge transactions
-> **1-Line Summary:** Direct port of Actual Budget's TypeScript rules engine, multi-format statement parsers (CSV, QIF, OFX, CAMT.053 XML), CSV exporter, and split/merge transaction utilities into the Vue 3 / Tauri application.
-* **How It Works (Plain English):** Actual Budget's codebase contains modular TypeScript utilities for automated categorization rules ("if Payee/Note contains X, set Category Y"), multi-format bank statement parsing (`qif2json.ts`, `ofx2json.ts`, `xmlcamt2json.ts`), RFC-4180 CSV export (`export-to-csv.ts`), and split/merge transaction handling (`merge.ts`). Because our PC Power App is built in TypeScript (Vue 3 + Tauri 2), we directly port these utility modules without language translation, granting smart auto-tagging and bank reconciliation while preserving Realbyte's fluid cashflow ledger model.
+### [SUBSYSTEM: Electron-SQLite-WAL-And-Binary-Bridge] | Aliases: electron main, preload ipc, better-sqlite3, v1_core schema, localStorage migration
+> **1-Line Summary:** Native `better-sqlite3` WAL database service in Electron Main Process with automatic one-time `localStorage` migration and read-only Realbyte binary `.sqlite` inspection.
+* **How It Works (Plain English):** `MoneySqliteService` opens `money_manager.sqlite` in Electron's `userData` folder with `PRAGMA journal_mode=WAL;`, `PRAGMA synchronous=NORMAL;`, `PRAGMA busy_timeout=5000;`, and `PRAGMA foreign_keys=ON;`. Schema tables from `shared/schema/v1_core.sql` enforce whole-Taka `INTEGER` columns. On startup, `hydrateFromElectronDb` checks if SQLite is initialized; if not, it automatically migrates existing `localStorage` state into SQLite inside an atomic `BEGIN IMMEDIATE ... COMMIT` block. Separately, `readRealbyteBinarySqlite` reads Android `money_android.sqlite` files in read-only mode so users never need manual SQL/JSON conversion.
+* **Code Anchors (Grep Targets):**
+  * `shared/schema/v1_core.sql` -> `accounts`, `transactions`, `sync_logs`
+  * `electron/db/sqliteService.ts` -> `MoneySqliteService`, `saveFullState`, `loadFullState`
+  * `electron/db/realbyteReader.ts` -> `readRealbyteBinarySqlite`
+  * `electron/main.ts` -> `registerIpcHandlers`, `createMainWindow`
+  * `electron/preload.ts` -> `contextBridge.exposeInMainWorld`
+
+---
+
+### [SUBSYSTEM: Realbyte-CORS-Free-Sync-And-Reconciliation] | Aliases: realbyte proxy, dry run sync, multiset reconciliation, endpoint probe, sync logs
+> **1-Line Summary:** Node-level Realbyte HTTP proxy with endpoint probing, 90-day chunked historical fetching, HTML session-expired detection, and non-mutating Dry-Run reconciliation previews.
+* **Data Flow Diagram:**
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as SettingsTab.vue
+    participant Store as Pinia Store
+    participant Proxy as electron/net/realbyteProxy.ts
+    participant Reconciler as syncCoordinator.ts
+    participant DB as MoneySqliteService
+
+    UI->>Proxy: probeEndpoints() / Dry-Run Sync
+    Proxy->>Phone: GET /moneyBook/ledger/select.do (90-day chunks)
+    Phone-->>Proxy: JSON Rows (or HTML -> REALBYTE_SESSION_INACTIVE)
+    Proxy-->>Store: normalizePcManagerData (DO_TYPE 3/4 collapse)
+    Store->>Reconciler: reconcileRealbyteSync(..., dryRun: true)
+    Reconciler-->>UI: Preview (+New / ~Updated / =Skipped / -Deleted)
+    UI->>Store: Commit Sync
+    Store->>DB: saveFullState() + appendSyncLog() inside BEGIN IMMEDIATE
+```
+
+* **Code Anchors (Grep Targets):**
+  * `electron/net/realbyteProxy.ts` -> `probeRealbyteEndpoints`, `fetchRealbyteTransactions`
+  * `src/modules/realbyte/client.ts` -> `RealbytePcManagerClient`, `fetchTransactionsChunked`, `normalizePcManagerData`
+  * `src/modules/sync/syncCoordinator.ts` -> `reconcileRealbyteSync`, `computeTransactionFingerprint`
+
+---
+
+### [SUBSYSTEM: Sanchaypatra-FDR-DPS-And-Analytics] | Aliases: sanchaypatra slab, early encashment, fdr dps calculator, visual svg charts
+> **1-Line Summary:** Cumulative slab Sanchaypatra engine with editable statutory tables, premature surrender calculator, FDR/DPS maturity math, and SVG cashflow/net-worth trend analytics.
+* **Code Anchors (Grep Targets):**
+  * `src/modules/sanchaypatra/calculator.ts` -> `calculateSanchaypatraProfit`, `calculateEarlyEncashment`, `addMonthsClampedISO`
+  * `src/modules/sanchaypatra/fdrDpsCalculator.ts` -> `calculateFdrMaturity`, `calculateDpsMaturity`
+  * `src/modules/statistics/analytics.ts` -> `computePeriodAnalytics`, `computeMonthlyTrend`, `computeNetWorthTrend`
+  * `src/components/AnalyticsCharts.vue` -> `donutSegments`, `monthlyTrend`, `netWorthTrend`
+
+---
+
+### [SUBSYSTEM: Actual-Budget-Harvested-Engines-And-Vault-Crypto] | Aliases: rules engine, csv ofx qif camt importer, split merge, encrypted json vault
+> **1-Line Summary:** Ported Actual Budget TypeScript rules, RFC-4180 CSV / OFX / QIF / CAMT.053 parsers, double-entry Beancount bridge, and WebCrypto PBKDF2 + AES-256-GCM vault backup encryption.
 * **Code Anchors (Grep Targets):**
   * `src/modules/rules/engine.ts` -> `applyRulesToTransaction`
   * `src/modules/importers/` -> `parseCsvStatement`, `parseQifContent`, `parseOfxStatement`, `parseCamtXmlStatement`
-  * `src/modules/exporters/csvExporter.ts` -> `exportTransactionsToCsv`, `exportFullBackupJson`
-  * `src/modules/transactions/recurringAndSplit.ts` -> `splitTransaction`, `mergeTransactions`, `processDueRecurringSchedules`
-
----
-
-### [SUBSYSTEM: Sanchaypatra-Profit-Engine] | Aliases: sanchaypatra calculation, profit schedule, ait tax deduction, savings scheme
-> **1-Line Summary:** Automated calculation of monthly/quarterly profits and tax deductions for Bangladeshi savings schemes based on government slab rules.
-* **How It Works (Plain English):** When a user inputs a Sanchaypatra purchase (e.g., 5-Year Bangladesh Sanchaypatra for BDT 1,000,000), the engine reads the active government slab rates, calculates the gross annual return, subtracts the applicable Advance Income Tax (AIT: 5% up to 500k, 10% above), generates a schedule of upcoming profit payout dates, and links them to the destination bank account (e.g., Sonali Bank).
-* **Data Flow Diagram:**
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User
-    participant UI as Sanchaypatra Form
-    participant Calc as Sanchaypatra Engine
-    participant DB as SQLite Storage
-    participant Sched as Recurring Ledger
-
-    User->>UI: Enter Principal (e.g. 1M BDT), Issue Date, Scheme Type
-    UI->>Calc: Compute Slab Rate, Gross Profit, and AIT Tax
-    Calc->>Calc: Generate Payout Dates (Monthly / Quarterly)
-    Calc->>DB: Store Instrument & Cashflow Timeline
-    DB->>Sched: Register Expected Payout Entries
-    Sched-->>UI: Display Next Payout Date & Maturity Countdown
-```
-
-* **Code Anchors (Grep Targets):**
-  * `src/modules/sanchaypatra/` -> `calculateNetProfit`, `generatePayoutSchedule`
-
----
-
-### [SUBSYSTEM: Calendar-Matrix-Engine] | Aliases: calendar aggregation, daily totals, expense matrix, date grouping
-> **1-Line Summary:** Fast daily aggregation engine summarizing income (green) and expense (red) per calendar day without lag.
-* **How It Works (Plain English):** Aggregates transactions by `date(timestamp)` using a single optimized SQL query for the selected month, returning a matrix of daily net numbers that populates the calendar grid instantly without loading individual transaction records into memory until a day is tapped.
-* **Data Flow Diagram:**
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant UI as Calendar View
-    participant Engine as Calendar Engine
-    participant DB as SQLite DB
-
-    UI->>Engine: Request Month Summary (Year, Month)
-    Engine->>DB: SELECT date, SUM(income), SUM(expense) GROUP BY date
-    DB-->>Engine: 31-day aggregated tuple array
-    Engine-->>UI: Render color-coded calendar cells
-    UI->>Engine: User taps Day 14
-    Engine->>DB: SELECT * WHERE date = Day 14
-    DB-->>UI: Populate Day 14 Transaction Sheet
-```
-
-* **Code Anchors (Grep Targets):**
-  * `src/modules/calendar/` -> `getMonthSummary`, `getDayTransactions`
-
----
-
-### [SUBSYSTEM: Cross-Device-Local-Sync] | Aliases: sync protocol, wifi sync, pc manager sync, sqlite backup vault, collision-free deduplication
-> **1-Line Summary:** Dual-pathway collision-free synchronizer merging Realbyte PC Manager Wi-Fi HTTP feeds and `money_android.sqlite` backup vaults with zero duplicates.
-* **How It Works (Plain English):** Users can sync their Realbyte Android app to the PC Power App through two interchangeable pathways: (1) Realbyte's built-in Wi-Fi PC Manager server (`http://<phoneIp>:10000/moneyBook`) and (2) the SQLite backup vault (`money_android.sqlite` synced via Google Drive / Mega). Both sources normalize records into a shared schema with `externalUid` (`rb-uid-<Z_PK>`) and a deterministic content fingerprint (`computeTransactionFingerprint`). When `reconcileRealbyteSync` runs inside a WAL-verified atomic transaction, it matches records across both pathways by `externalUid`, `id`, or fingerprint, resolving updates via Last-Write-Wins (`updatedAt` / `UTIME`) and preventing duplicate transactions or double-counted account balances.
-* **Data Flow Diagram:**
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Phone as Realbyte Android App
-    participant Wifi as PC Manager HTTP (Port 10000)
-    participant Vault as SQLite Backup (money_android.sqlite)
-    participant Reconciler as reconcileRealbyteSync
-    participant Store as PC Ledger Store
-
-    Phone->>Wifi: Stream JSON (/account, /category, /ledger)
-    Phone->>Vault: Export INOUTCOME, ASSETS, ZCATEGORY tables
-    Wifi->>Reconciler: normalizePcManagerData (rb-uid + fingerprint)
-    Vault->>Reconciler: parseRealbyteSqliteVault (WAL + Atomic Txn)
-    Reconciler->>Reconciler: Match by externalUid OR Fingerprint + LWW Timestamp
-    Reconciler-->>Store: Commit New/Updated Records & Skip Duplicates
-```
-
-* **Code Anchors (Grep Targets):**
-  * `src/modules/sync/syncCoordinator.ts` -> `reconcileRealbyteSync`, `computeTransactionFingerprint`
-  * `src/modules/database/sqliteVault.ts` -> `createSQLiteConnection`, `parseRealbyteSqliteVault`
-  * `src/modules/realbyte/client.ts` -> `RealbytePcManagerClient`, `normalizePcManagerData`
+  * `src/modules/exporters/vaultCrypto.ts` -> `encryptVaultJson`, `decryptVaultJson`
+  * `src/modules/ledger/doubleEntryBridge.ts` -> `generateDoubleEntryJournal`, `verifyLedgerTrialBalance`, `exportJournalToBeancount`
 
 ---
 
 ## 4. Verification & Health Checks
 
-### [VERIFY: Automated-Check-Suite] | Aliases: build test, verify logic, typecheck, lint
-> **1-Line Summary:** Standardized commands to verify mathematical accuracy, sync consistency, and build readiness.
-* **Type & Logic Verification:** `npm test` (verifying Sanchaypatra slab calculations, calendar matrix, accounts hierarchy, and statement parsers).
-* **Type Check & Compilation:** `npm run typecheck` or `npm run build`.
-* **Code Quality & Linting:** `npm run lint`.
-* **Portable Desktop Build:** `npm run tauri build` (or tag-triggered GitHub Actions cloud build).
-
----
-
-## 5. Recipes: How to Add New Things Safely
-
-* **To add a new Savings Scheme (e.g., Paribar Sanchaypatra or 3-Month Profit):**
-  1. Define the scheme parameters in `src/modules/sanchaypatra/schemes.json` (tenure, payout interval, slab tiers).
-  2. Implement any special withholding/tax logic in `SanchaypatraEngine` -> `calculateNetProfit`.
-  3. Register UI label and icon in `SchemePickerComponent`.
+### [VERIFY: Automated-Check-Suite] | Aliases: build test, verify logic, typecheck, lint, electron compile
+> **1-Line Summary:** Standardized verification commands covering Vue + Electron TypeScript checking, unit/integration Vitest suites, Vite build, and esbuild Electron compilation.
+* **Logic, SQLite WAL & Proxy Tests:** `npm test`
+* **Typecheck & Static Lint:** `npm run typecheck` and `npm run lint`
+* **Production Web Bundle:** `npm run build`
+* **Electron Main/Preload Bundle:** `npm run electron:compile`
+* **Portable Windows Executable:** `npm run electron:build`

@@ -58,6 +58,7 @@ export function buildAccountsHierarchy(
   let totalLiabilities = 0;
 
   for (const acc of accounts) {
+    if (acc.archived) continue;
     if (acc.type === 'cash' || acc.type === 'bank') {
       groups.cash_and_bank.accounts.push(acc);
       groups.cash_and_bank.totalBalance += acc.balance;

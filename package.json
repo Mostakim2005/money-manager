@@ -4,30 +4,68 @@
   "private": true,
   "description": "Cross-platform Personal Finance & Money Manager with Realbyte parity, Sanchaypatra profit tracking, and cloud sync",
   "type": "module",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "tauri": "tauri",
-    "typecheck": "vue-tsc --noEmit",
-    "lint": "vue-tsc --noEmit",
+    "typecheck": "vue-tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "lint": "npm run typecheck",
+    "build": "npm run typecheck && vite build",
+    "electron:compile": "node scripts/build-electron.mjs",
+    "electron:dev": "npm run electron:compile && electron .",
+    "electron:build": "npm run build && npm run electron:compile && electron-builder --win portable",
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "better-sqlite3": "^13.2.0",
     "date-fns": "^3.6.0",
     "lucide-vue-next": "^0.378.0",
     "pinia": "^2.1.7",
     "vue": "^3.4.27"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^20.12.11",
     "@vitejs/plugin-vue": "^5.0.4",
     "autoprefixer": "^10.4.19",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5",
     "vite": "^5.2.11",
     "vitest": "^1.6.0",
     "vue-tsc": "^2.0.16"
+  },
+  "build": {
+    "appId": "com.mostakim2005.moneymanager",
+    "productName": "Money Manager",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "shared/schema/**/*",
+      "assets/icons/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icons/icon.ico"
+    },
+    "portable": {
+      "artifactName": "money-manager-windows-portable.exe"
+    }
   }
 }

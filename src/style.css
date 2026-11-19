@@ -2,16 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light dark;
+  --accent-light: #e11d48;
+  --accent-dark: #f43f5e;
+  --surface-app: light-dark(#f1f5f9, #020617);
+  --surface-sidebar: light-dark(#ffffff, #0f172a);
+  --surface-card: light-dark(#ffffff, #0f172a);
+  --surface-panel: light-dark(#f8fafc, #111c33);
+  --surface-input: light-dark(#ffffff, #020617);
+  --border-subtle: light-dark(#e2e8f0, #1e293b);
+  --border-strong: light-dark(#cbd5e1, #334155);
+  --text-primary: light-dark(#0f172a, #f8fafc);
+  --text-secondary: light-dark(#334155, #cbd5e1);
+  --text-muted: light-dark(#475569, #94a3b8);
+  --scrollbar-track: light-dark(#e2e8f0, #0f172a);
+  --scrollbar-thumb: light-dark(#94a3b8, #475569);
+  accent-color: light-dark(var(--accent-light), var(--accent-dark));
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]),
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]),
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
 html {
   scroll-padding-block-start: 4rem;
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   margin: 0;
   padding: 0;
-  background-color: #0f172a;
-  color: #f8fafc;
+  background-color: var(--surface-app);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -25,114 +55,62 @@ body {
   transition: none !important;
 }
 
-/* Calibrated Light Mode Theme Rules */
-html[data-theme="light"] body {
-  background-color: #f8fafc;
-  color: #0f172a;
+/* Native <dialog> top-layer scroll containment */
+dialog:modal {
+  overscroll-behavior: contain;
+  margin: auto;
+  max-height: min(92vh, 92dvh);
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
 }
 
-/* Surfaces */
-html[data-theme="light"] .bg-slate-950 {
-  background-color: #f1f5f9 !important;
-}
-html[data-theme="light"] .bg-slate-950\/80,
-html[data-theme="light"] .bg-slate-950\/70,
-html[data-theme="light"] .bg-slate-950\/60,
-html[data-theme="light"] .bg-slate-950\/40 {
-  background-color: #e2e8f0 !important;
+dialog::backdrop {
+  background: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(4px);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
-html[data-theme="light"] .bg-slate-900 {
-  background-color: #ffffff !important;
-}
-html[data-theme="light"] .bg-slate-900\/95,
-html[data-theme="light"] .bg-slate-900\/90,
-html[data-theme="light"] .bg-slate-900\/80,
-html[data-theme="light"] .bg-slate-900\/70,
-html[data-theme="light"] .bg-slate-900\/60,
-html[data-theme="light"] .bg-slate-900\/50,
-html[data-theme="light"] .bg-slate-900\/40,
-html[data-theme="light"] .bg-slate-900\/20 {
-  background-color: #f8fafc !important;
+/* Reusable semantic theme surfaces */
+.app-shell {
+  background-color: var(--surface-app);
+  color: var(--text-primary);
 }
 
-html[data-theme="light"] .bg-slate-800 {
-  background-color: #ffffff !important;
-}
-html[data-theme="light"] .bg-slate-800\/95,
-html[data-theme="light"] .bg-slate-800\/90,
-html[data-theme="light"] .bg-slate-800\/80,
-html[data-theme="light"] .bg-slate-800\/70,
-html[data-theme="light"] .bg-slate-800\/60,
-html[data-theme="light"] .bg-slate-800\/50,
-html[data-theme="light"] .bg-slate-800\/40 {
-  background-color: #ffffff !important;
+.sidebar-surface {
+  background-color: var(--surface-sidebar);
+  border-color: var(--border-subtle);
 }
 
-/* Borders */
-html[data-theme="light"] .border-slate-800,
-html[data-theme="light"] .border-slate-800\/80,
-html[data-theme="light"] .border-slate-800\/60,
-html[data-theme="light"] .border-slate-800\/40,
-html[data-theme="light"] .border-slate-700,
-html[data-theme="light"] .border-slate-700\/80,
-html[data-theme="light"] .border-slate-700\/60,
-html[data-theme="light"] .border-slate-700\/50,
-html[data-theme="light"] .border-slate-700\/40 {
-  border-color: #cbd5e1 !important;
+.card-surface {
+  background-color: var(--surface-card);
+  border-color: var(--border-subtle);
 }
 
-/* Slate Text Colors (Zero Contrast Inversions) */
-html[data-theme="light"] .text-slate-100,
-html[data-theme="light"] .text-slate-200 {
-  color: #0f172a !important;
-}
-html[data-theme="light"] .text-slate-300 {
-  color: #1e293b !important;
-}
-html[data-theme="light"] .text-slate-400 {
-  color: #334155 !important;
-}
-html[data-theme="light"] .text-slate-500 {
-  color: #475569 !important;
+.panel-surface {
+  background-color: var(--surface-panel);
+  border-color: var(--border-subtle);
 }
 
-/* High-Contrast Accents */
-html[data-theme="light"] .text-emerald-400,
-html[data-theme="light"] .text-emerald-300 {
-  color: #047857 !important; /* 7.1:1 on white */
-}
-html[data-theme="light"] .text-rose-400,
-html[data-theme="light"] .text-rose-300 {
-  color: #be123c !important; /* 6.5:1 on white */
-}
-html[data-theme="light"] .text-sky-400,
-html[data-theme="light"] .text-sky-300 {
-  color: #0369a1 !important; /* 5.9:1 on white */
-}
-html[data-theme="light"] .text-amber-400,
-html[data-theme="light"] .text-amber-300 {
-  color: #b45309 !important; /* 5.0:1 on white */
-}
-html[data-theme="light"] .text-purple-400,
-html[data-theme="light"] .text-purple-300 {
-  color: #6d28d9 !important; /* 6.3:1 on white */
+.input-surface {
+  background-color: var(--surface-input);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
-/* Text white headings & content elements (excluding colored buttons/badges) */
-html[data-theme="light"] h1.text-white,
-html[data-theme="light"] h2.text-white,
-html[data-theme="light"] h3.text-white,
-html[data-theme="light"] h4.text-white,
-html[data-theme="light"] .text-white:not(button):not(button *):not([class*="bg-rose"]):not([class*="bg-emerald"]):not([class*="bg-sky"]):not([class*="bg-indigo"]) {
-  color: #0f172a !important;
-}
-
-/* Input / Select controls */
-html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
-html[data-theme="light"] select,
-html[data-theme="light"] textarea {
-  color: #0f172a !important;
-  background-color: #ffffff !important;
-  border-color: #cbd5e1 !important;
+/* Legacy scrollbar fallback for older WebKit/Blink engines */
+@supports not (scrollbar-color: auto) {
+  .scroller::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .scroller::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 9999px;
+  }
+  .scroller::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
 }

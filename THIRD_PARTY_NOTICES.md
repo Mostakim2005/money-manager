@@ -3,7 +3,7 @@
 Money Manager itself is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
 It builds on open-source software and references that keep their own licenses. This document lists every direct dependency, borrowed utility, and upstream reference with its license, split by whether its code ships inside the application.
 
-License texts: [MIT](https://opensource.org/licenses/MIT) · [Apache-2.0](https://opensource.org/licenses/Apache-2.0) · [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) · [BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause)
+License texts: [MIT](https://opensource.org/licenses/MIT) · [Apache-2.0](https://opensource.org/licenses/Apache-2.0) · [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) · [BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause) · [OFL-1.1](https://scripts.sil.org/OFL)
 
 ---
 
@@ -14,7 +14,7 @@ License texts: [MIT](https://opensource.org/licenses/MIT) · [Apache-2.0](https:
 | **Actual Budget** | Rule engine, split/merge/recurring transaction mechanics, RFC-4180 CSV exporter, and bank statement importer parsers (CSV, QIF, OFX 1.x/2.x, ISO 20022 CAMT.053 XML) | MIT | [GitHub](https://github.com/actualbudget/actual) · [License](https://github.com/actualbudget/actual/blob/master/LICENSE) |
 | **ezBookkeeping** | Calendar view design, daily inflow/outflow matrix logic, and transaction categorization patterns | GPL-3.0 | [GitHub](https://github.com/mayswind/ezbookkeeping) · [License](https://github.com/mayswind/ezbookkeeping/blob/main/LICENSE) |
 | **Cashew** | Material UI budgeting aesthetics, recurring transaction patterns, and local storage references | GPL-3.0 | [GitHub](https://github.com/jameskokoska/Cashew) · [License](https://github.com/jameskokoska/Cashew/blob/main/LICENSE) |
-| **Wealthfolio** | Desktop architecture, local-first SQLite patterns, and Tauri reference | AGPL-3.0 | [GitHub](https://github.com/wealthfolio/wealthfolio) · [License](https://github.com/wealthfolio/wealthfolio/blob/main/LICENSE) |
+| **Wealthfolio** | Desktop local-first SQLite architecture reference | AGPL-3.0 | [GitHub](https://github.com/wealthfolio/wealthfolio) · [License](https://github.com/wealthfolio/wealthfolio/blob/main/LICENSE) |
 | **Realbyte Money Manager** | User experience philosophy, calendar grid layout, and SQLite database schema compatibility target (No proprietary source code incorporated). | Proprietary | [Realbyte Inc.](https://realbyteapps.com) |
 
 ---
@@ -23,11 +23,13 @@ License texts: [MIT](https://opensource.org/licenses/MIT) · [Apache-2.0](https:
 
 | Package / Library | Purpose | License | Upstream Link |
 | --- | --- | --- | --- |
+| `electron` | Cross-platform desktop shell runtime & Node IPC host | MIT | [License](https://github.com/electron/electron/blob/main/LICENSE) |
+| `better-sqlite3` | Synchronous native SQLite WAL database & binary Realbyte reader | MIT | [License](https://github.com/WiseLibs/better-sqlite3/blob/master/LICENSE) |
 | `vue` | Reactive user interface framework | MIT | [License](https://github.com/vuejs/core/blob/main/LICENSE) |
 | `pinia` | State management for accounts, calendar, and active views | MIT | [License](https://github.com/vuejs/pinia/blob/v2/LICENSE) |
-| `sql.js` / `@tauri-apps/plugin-sql` | SQLite database access and query execution | MIT | [License](https://github.com/sql-js/sql.js/blob/master/LICENSE) |
 | `lucide-vue-next` | Clean UI icons for categories, accounts, and navigation | ISC | [License](https://github.com/lucide-icons/lucide/blob/main/LICENSE) |
 | `date-fns` | Date calculations, calendar matrix math, and timezone handling | MIT | [License](https://github.com/date-fns/date-fns/blob/main/LICENSE.md) |
+| `@fontsource/inter` | Offline bundled Inter variable/static UI fonts | OFL-1.1 / MIT | [License](https://github.com/fontsource/fontsource/blob/main/LICENSE) |
 
 ---
 
@@ -35,11 +37,11 @@ License texts: [MIT](https://opensource.org/licenses/MIT) · [Apache-2.0](https:
 
 | Package / Library | Purpose | License | Upstream Link |
 | --- | --- | --- | --- |
-| `@tauri-apps/cli` | Desktop compilation and portable `.exe` packager | MIT / Apache-2.0 | [License](https://github.com/tauri-apps/tauri/blob/dev/LICENSE_MIT) |
-| `vite` | Next-generation frontend tooling and fast dev server | MIT | [License](https://github.com/vitejs/vite/blob/main/LICENSE.md) |
+| `electron-builder` | Portable Windows `.exe` packager | MIT | [License](https://github.com/electron-userland/electron-builder/blob/master/LICENSE) |
+| `vite` | Frontend bundler and fast dev server | MIT | [License](https://github.com/vitejs/vite/blob/main/LICENSE.md) |
 | `typescript` | Static type checking and compiler | Apache-2.0 | [License](https://github.com/microsoft/TypeScript/blob/main/LICENSE.txt) |
 | `tailwindcss` | Utility-first CSS styling framework | MIT | [License](https://github.com/tailwindlabs/tailwindcss/blob/master/LICENSE) |
-| `vitest` | Unit and math logic test suite (Sanchaypatra slab tests) | MIT | [License](https://github.com/vitest-dev/vitest/blob/main/LICENSE) |
+| `vitest` | Unit and integration test suite | MIT | [License](https://github.com/vitest-dev/vitest/blob/main/LICENSE) |
 
 ---
 

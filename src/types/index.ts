@@ -6,6 +6,8 @@ export type ThemeMode = 'dark' | 'light';
 
 export type SyncSource = 'local' | 'realbyte_pc_manager' | 'realbyte_sqlite_backup' | 'bank_import';
 
+export type SyncScope = 'current_month' | 'last_90_days' | 'full_year' | 'all_history';
+
 export interface Transaction {
   id: string;
   externalUid?: string; // Realbyte INOUTCOME / ZINOUTCOME UID or Z_PK
@@ -13,7 +15,7 @@ export interface Transaction {
   syncSource?: SyncSource;
   date: string; // ISO YYYY-MM-DD
   time?: string; // HH:mm
-  amount: number;
+  amount: number; // Always whole-Taka BDT integer
   type: TransactionType;
   categoryId: string;
   subcategoryId?: string;
@@ -21,6 +23,10 @@ export interface Transaction {
   targetAccountId?: string; // Destination account for transfers
   note?: string;
   description?: string; // Payee or statement narration
+  currency?: string;
+  originalAmount?: number;
+  exchangeRate?: number;
+  receiptPath?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -32,7 +38,7 @@ export interface Account {
   externalUid?: string; // Realbyte ASSETS UID
   name: string;
   type: AccountType;
-  balance: number;
+  balance: number; // Always whole-Taka BDT integer
   currency: string; // e.g. BDT
   accountNumber?: string;
   creditLimit?: number;
@@ -62,7 +68,7 @@ export interface SanchaypatraScheme {
   schemeDefId?: string;
   name: string; // e.g., "5-Year Bangladesh Sanchaypatra"
   registrationNo: string;
-  principal: number; // e.g. 1,000,000 BDT (Whole Taka)
+  principal: number; // Whole Taka
   issueDate: string; // YYYY-MM-DD
   maturityDate: string; // YYYY-MM-DD
   tenureYears: number;
@@ -73,6 +79,41 @@ export interface SanchaypatraScheme {
   linkedAccountId: string; // Bank account where profits are deposited
   nextPayoutDate: string;
   status?: 'active' | 'matured' | 'encashed';
+}
+
+export interface FdrDpsAccount {
+  id: string;
+  kind: 'fdr' | 'dps';
+  bankName: string;
+  accountNumber: string;
+  principal: number; // Initial FDR principal or total DPS deposited so far (whole Taka)
+  monthlyInstallment: number; // 0 for FDR, monthly deposit for DPS (whole Taka)
+  annualRate: number; // e.g. 0.095
+  aitRate: number; // e.g. 0.10
+  tenureMonths: number;
+  paidInstallments: number;
+  startDate: string; // YYYY-MM-DD
+  maturityDate: string; // YYYY-MM-DD
+  expectedMaturityAmount: number; // Whole Taka
+  linkedAccountId: string;
+  status: 'active' | 'matured' | 'encashed';
+}
+
+export interface EarlyEncashmentResult {
+  schemeId: string;
+  schemeName: string;
+  principalBDT: number;
+  issueDate: string;
+  encashmentDate: string;
+  completedYears: number;
+  effectiveEarlyRate: number;
+  grossAccruedProfitBDT: number;
+  aitRate: number;
+  aitDeductedBDT: number;
+  netAccruedProfitBDT: number;
+  alreadyPaidProfitBDT: number;
+  adjustmentDeltaBDT: number;
+  netSettlementPayoutBDT: number;
 }
 
 export interface DailySummary {
@@ -110,6 +151,27 @@ export interface Rule {
   }[];
 }
 
+export interface RealbyteEndpointOverrides {
+  accountPath: string;
+  categoryPath: string;
+  ledgerPath: string;
+}
+
+export interface RealbyteProbeEndpointResult {
+  label: string;
+  path: string;
+  url: string;
+  status: number;
+  ok: boolean;
+  contentType: string;
+  isHtml: boolean;
+  topLevelKeys: string[];
+  sampleCount: number;
+  elapsedMs: number;
+  error?: string;
+  previewSnippet?: string;
+}
+
 export interface SyncReconciliationReport {
   source: 'realbyte_pc_manager' | 'realbyte_sqlite_backup';
   timestamp: number;
@@ -126,6 +188,22 @@ export interface SyncReconciliationReport {
     toUpdate: { before: Transaction; after: Transaction }[];
     toDelete: Transaction[];
   };
+}
+
+export interface SyncLogEntry {
+  id: string;
+  source: 'realbyte_pc_manager' | 'realbyte_sqlite_backup';
+  timestamp: number;
+  insertedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  deletedCount: number;
+  mergedAccounts: number;
+  mergedCategories: number;
+  walVerified: boolean;
+  scopeLabel?: string;
+  status: 'success' | 'error';
+  errorMessage?: string;
 }
 
 export interface FeatureFlags {
@@ -179,3 +257,58 @@ export interface SplitAllocation {
   note?: string;
 }
 
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  targetDate: string;
+  linkedAccountId: string;
+  color?: string;
+  note?: string;
+  status: 'active' | 'completed';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface IouRecord {
+  id: string;
+  personName: string;
+  direction: 'lent' | 'borrowed';
+  principal: number;
+  paidAmount: number;
+  date: string;
+  dueDate?: string;
+  accountId: string;
+  note?: string;
+  status: 'open' | 'settled';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreditCardEmi {
+  id: string;
+  accountId: string;
+  title: string;
+  totalAmount: number;
+  tenureMonths: number;
+  paidMonths: number;
+  monthlyInstallment: number;
+  startDate: string;
+  nextDueDate: string;
+  status: 'active' | 'completed';
+}
+
+export interface MonthlyTrendPoint {
+  monthKey: string;
+  label: string;
+  income: number;
+  expense: number;
+  net: number;
+}
+
+export interface NetWorthTrendPoint {
+  monthKey: string;
+  label: string;
+  netWorth: number;
+}

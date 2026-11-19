@@ -76,8 +76,15 @@ export function exportFullBackupJson(state: {
   accounts: Account[];
   categories: Category[];
   sanchaypatraSchemes: any[];
+  fdrDpsAccounts?: any[];
   rules: any[];
   recurringSchedules?: any[];
+  savingsGoals?: any[];
+  iouRecords?: any[];
+  creditCardEmis?: any[];
+  exchangeRates?: Record<string, number>;
+  customSchemeDefinitions?: any[];
+  featureFlags?: Record<string, boolean>;
 }): string {
   const backupPayload = {
     version: '1.0.0',

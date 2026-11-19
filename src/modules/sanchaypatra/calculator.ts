@@ -1,4 +1,5 @@
-import { SchemeDefinition } from './schemes';
+import type { SchemeDefinition } from './schemes';
+import type { EarlyEncashmentResult, SanchaypatraScheme } from '../../types';
 import { advanceDueDate } from '../transactions/recurringAndSplit';
 
 export interface SanchaypatraCalculationResult {
@@ -111,7 +112,75 @@ export function generatePayoutScheduleDates(
     dates.push(addMonthsClampedISO(issueDateISO, i * payoutIntervalMonths));
   }
 
-  // Ensure advanceDueDate remains referenced/compatible
   void advanceDueDate;
   return dates;
+}
+
+/**
+ * Counts completed full years between two ISO YYYY-MM-DD dates.
+ */
+export function countCompletedYearsISO(issueDateISO: string, targetDateISO: string): number {
+  const [iy, im, id] = issueDateISO.split('-').map(Number);
+  const [ty, tm, td] = targetDateISO.split('-').map(Number);
+  if (!iy || !im || !id || !ty || !tm || !td) return 0;
+
+  let years = ty - iy;
+  if (tm < im || (tm === im && td < id)) {
+    years -= 1;
+  }
+  return Math.max(0, years);
+}
+
+/**
+ * Computes premature encashment settlement under Bangladesh Sanchaypatra stepped surrender rules.
+ * - < 1 completed year: 0% profit allowed (already paid periodic payouts are clawed back from principal).
+ * - 1 .. tenureYears - 1: stepped early surrender rate below full maturity rate.
+ * - >= tenureYears: full slabGrossRate applies.
+ * All returned monetary figures are whole-Taka integers.
+ */
+export function calculateEarlyEncashment(
+  scheme: SanchaypatraScheme,
+  encashmentDateISO: string,
+  alreadyPaidProfitBDT: number = 0
+): EarlyEncashmentResult {
+  const principalBDT = Math.round(scheme.principal);
+  const completedYears = Math.min(
+    scheme.tenureYears,
+    countCompletedYearsISO(scheme.issueDate, encashmentDateISO)
+  );
+
+  let effectiveEarlyRate = 0;
+  if (completedYears >= scheme.tenureYears) {
+    effectiveEarlyRate = scheme.slabGrossRate;
+  } else if (completedYears >= 1) {
+    const floorRate = Math.max(0.05, scheme.slabGrossRate - 0.02);
+    const ceilingRate = Math.max(floorRate, scheme.slabGrossRate - 0.005);
+    const steps = Math.max(1, scheme.tenureYears - 2);
+    const progress = Math.min(1, (completedYears - 1) / steps);
+    effectiveEarlyRate = Number((floorRate + (ceilingRate - floorRate) * progress).toFixed(4));
+  }
+
+  const grossAccruedProfitBDT = Math.round(principalBDT * effectiveEarlyRate * completedYears);
+  const aitDeductedBDT = Math.round(grossAccruedProfitBDT * scheme.aitRate);
+  const netAccruedProfitBDT = grossAccruedProfitBDT - aitDeductedBDT;
+  const paidRounded = Math.max(0, Math.round(alreadyPaidProfitBDT));
+  const adjustmentDeltaBDT = netAccruedProfitBDT - paidRounded;
+  const netSettlementPayoutBDT = Math.max(0, principalBDT + adjustmentDeltaBDT);
+
+  return {
+    schemeId: scheme.id,
+    schemeName: scheme.name,
+    principalBDT,
+    issueDate: scheme.issueDate,
+    encashmentDate: encashmentDateISO,
+    completedYears,
+    effectiveEarlyRate,
+    grossAccruedProfitBDT,
+    aitRate: scheme.aitRate,
+    aitDeductedBDT,
+    netAccruedProfitBDT,
+    alreadyPaidProfitBDT: paidRounded,
+    adjustmentDeltaBDT,
+    netSettlementPayoutBDT,
+  };
 }

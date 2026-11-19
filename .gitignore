@@ -5,9 +5,10 @@ node_modules/
 
 # Production build outputs
 dist/
+dist-electron/
+release/
 build/
 target/
-src-tauri/target/
 
 # Local databases and SQLite files (Never commit user financial data)
 *.sqlite

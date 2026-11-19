@@ -1,4 +1,11 @@
-import type { Account, Category, Transaction, TransactionType } from '../../types';
+import type {
+  Account,
+  Category,
+  RealbyteEndpointOverrides,
+  RealbyteProbeEndpointResult,
+  Transaction,
+  TransactionType,
+} from '../../types';
 import { computeTransactionFingerprint } from '../sync/syncCoordinator';
 import {
   inferAccountType,
@@ -8,6 +15,12 @@ import {
   collapseRealbyteTransferPairs,
 } from '../database/sqliteVault';
 import { roundTaka } from '../accounts/transferEngine';
+
+export const DEFAULT_REALBYTE_ENDPOINTS: RealbyteEndpointOverrides = {
+  accountPath: '/moneyBook/account/select.do',
+  categoryPath: '/moneyBook/category/select.do',
+  ledgerPath: '/moneyBook/ledger/select.do',
+};
 
 /**
  * Unwraps Realbyte PC Manager responses which may be a direct JSON array
@@ -24,6 +37,59 @@ export function unwrapRealbyteArray(raw: unknown): any[] {
   return [];
 }
 
+function normalizePath(rawPath: string | undefined, fallback: string): string {
+  const cleaned = String(rawPath || '').trim() || fallback;
+  return cleaned.startsWith('/') ? cleaned : `/${cleaned}`;
+}
+
+function isHtmlString(contentType: string, text: string): boolean {
+  const ct = contentType.toLowerCase();
+  const trimmed = text.trim().toLowerCase();
+  return (
+    ct.includes('text/html') ||
+    trimmed.startsWith('<!doctype') ||
+    trimmed.startsWith('<html') ||
+    trimmed.startsWith('<head') ||
+    trimmed.startsWith('<body')
+  );
+}
+
+/**
+ * Splits a `[startDate, endDate]` window into <= 92-day chunks so long historical fetches
+ * do not overwhelm Realbyte's embedded phone HTTP server.
+ */
+export function splitDateRangeIntoChunks(
+  startDate: string,
+  endDate: string,
+  maxDaysPerChunk: number = 90
+): { startDate: string; endDate: string }[] {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) {
+    return [{ startDate, endDate }];
+  }
+
+  const chunks: { startDate: string; endDate: string }[] = [];
+  let cursor = new Date(start.getTime());
+
+  while (cursor <= end) {
+    const chunkEnd = new Date(cursor.getTime());
+    chunkEnd.setUTCDate(chunkEnd.getUTCDate() + maxDaysPerChunk - 1);
+    const actualEnd = chunkEnd > end ? end : chunkEnd;
+
+    chunks.push({
+      startDate: cursor.toISOString().slice(0, 10),
+      endDate: actualEnd.toISOString().slice(0, 10),
+    });
+
+    const nextCursor = new Date(actualEnd.getTime());
+    nextCursor.setUTCDate(nextCursor.getUTCDate() + 1);
+    cursor = nextCursor;
+  }
+
+  return chunks;
+}
+
 /**
  * Client for Realbyte Money Manager's built-in PC Manager HTTP server.
  * When enabled on the Android phone over Wi-Fi, the app listens on port 10000.
@@ -34,22 +100,42 @@ export class RealbytePcManagerClient {
   private baseUrl: string;
   private phoneIp: string;
   private port: number;
+  private overrides: RealbyteEndpointOverrides;
 
-  constructor(phoneIp: string, port: number = 10000) {
+  constructor(
+    phoneIp: string,
+    port: number = 10000,
+    endpointOverrides?: Partial<RealbyteEndpointOverrides>
+  ) {
     this.phoneIp = phoneIp.trim();
     this.port = port;
     this.baseUrl = `http://${this.phoneIp}:${this.port}/moneyBook`;
+    this.overrides = {
+      accountPath: normalizePath(endpointOverrides?.accountPath, DEFAULT_REALBYTE_ENDPOINTS.accountPath),
+      categoryPath: normalizePath(endpointOverrides?.categoryPath, DEFAULT_REALBYTE_ENDPOINTS.categoryPath),
+      ledgerPath: normalizePath(endpointOverrides?.ledgerPath, DEFAULT_REALBYTE_ENDPOINTS.ledgerPath),
+    };
   }
 
   public getBaseUrl(): string {
     return this.baseUrl;
   }
 
-  private async fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+  private async fetchJsonBrowserWithTimeout(url: string, timeoutMs: number): Promise<unknown> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetch(url, { method: 'GET', signal: controller.signal });
+      const response = await fetch(url, { method: 'GET', signal: controller.signal });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+      if (isHtmlString(response.headers.get('content-type') || '', text)) {
+        throw new Error(
+          'REALBYTE_SESSION_INACTIVE: Realbyte PC Manager returned an HTML page instead of JSON. Re-open PC Manager on your phone.'
+        );
+      }
+      return text.trim() ? JSON.parse(text) : [];
     } finally {
       clearTimeout(timer);
     }
@@ -64,11 +150,99 @@ export class RealbytePcManagerClient {
       return await electronApi.checkConnection(this.phoneIp, this.port);
     }
     try {
-      const response = await this.fetchWithTimeout(`${this.baseUrl}/`, 4000);
-      return response.ok;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      try {
+        const response = await fetch(`${this.baseUrl}/`, { method: 'GET', signal: controller.signal });
+        return response.ok;
+      } finally {
+        clearTimeout(timer);
+      }
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Probes root, accounts, categories, and ledger endpoints and returns diagnostic metadata.
+   */
+  public async probeEndpoints(): Promise<RealbyteProbeEndpointResult[]> {
+    const electronApi = (globalThis as any)?.window?.moneyApi?.realbyte;
+    if (electronApi?.probeEndpoints) {
+      return await electronApi.probeEndpoints(this.phoneIp, this.port, this.overrides);
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const targets = [
+      { label: 'Root Server', path: '/moneyBook/' },
+      { label: 'Accounts', path: this.overrides.accountPath },
+      { label: 'Categories', path: this.overrides.categoryPath },
+      { label: 'Ledger (Current Month)', path: `${this.overrides.ledgerPath}?start=${monthStart}&end=${today}` },
+    ];
+
+    const results: RealbyteProbeEndpointResult[] = [];
+    for (const target of targets) {
+      const url = `http://${this.phoneIp}:${this.port}${target.path}`;
+      const started = Date.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      try {
+        const res = await fetch(url, { method: 'GET', signal: controller.signal });
+        const text = await res.text();
+        const ct = res.headers.get('content-type') || '';
+        const html = isHtmlString(ct, text);
+        let topLevelKeys: string[] = [];
+        let sampleCount = 0;
+
+        if (!html && text.trim()) {
+          try {
+            const parsed = JSON.parse(text);
+            if (Array.isArray(parsed)) {
+              topLevelKeys = ['[array]'];
+              sampleCount = parsed.length;
+            } else if (parsed && typeof parsed === 'object') {
+              topLevelKeys = Object.keys(parsed);
+              sampleCount = unwrapRealbyteArray(parsed).length;
+            }
+          } catch {
+            // Non-JSON payload
+          }
+        }
+
+        results.push({
+          label: target.label,
+          path: target.path,
+          url,
+          status: res.status,
+          ok: res.ok,
+          contentType: ct,
+          isHtml: html,
+          topLevelKeys,
+          sampleCount,
+          elapsedMs: Date.now() - started,
+          previewSnippet: text.slice(0, 180),
+        });
+      } catch (err) {
+        results.push({
+          label: target.label,
+          path: target.path,
+          url,
+          status: 0,
+          ok: false,
+          contentType: '',
+          isHtml: false,
+          topLevelKeys: [],
+          sampleCount: 0,
+          elapsedMs: Date.now() - started,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    return results;
   }
 
   /**
@@ -77,11 +251,13 @@ export class RealbytePcManagerClient {
   public async fetchAccounts(): Promise<unknown[]> {
     const electronApi = (globalThis as any)?.window?.moneyApi?.realbyte;
     if (electronApi?.fetchAccounts) {
-      return unwrapRealbyteArray(await electronApi.fetchAccounts(this.phoneIp, this.port));
+      return unwrapRealbyteArray(await electronApi.fetchAccounts(this.phoneIp, this.port, this.overrides));
     }
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/account/select.do`, 10000);
-    if (!response.ok) throw new Error(`Failed to fetch accounts: ${response.statusText}`);
-    return unwrapRealbyteArray(await response.json());
+    const raw = await this.fetchJsonBrowserWithTimeout(
+      `http://${this.phoneIp}:${this.port}${this.overrides.accountPath}`,
+      10000
+    );
+    return unwrapRealbyteArray(raw);
   }
 
   /**
@@ -90,11 +266,13 @@ export class RealbytePcManagerClient {
   public async fetchCategories(): Promise<unknown[]> {
     const electronApi = (globalThis as any)?.window?.moneyApi?.realbyte;
     if (electronApi?.fetchCategories) {
-      return unwrapRealbyteArray(await electronApi.fetchCategories(this.phoneIp, this.port));
+      return unwrapRealbyteArray(await electronApi.fetchCategories(this.phoneIp, this.port, this.overrides));
     }
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/category/select.do`, 10000);
-    if (!response.ok) throw new Error(`Failed to fetch categories: ${response.statusText}`);
-    return unwrapRealbyteArray(await response.json());
+    const raw = await this.fetchJsonBrowserWithTimeout(
+      `http://${this.phoneIp}:${this.port}${this.overrides.categoryPath}`,
+      10000
+    );
+    return unwrapRealbyteArray(raw);
   }
 
   /**
@@ -104,15 +282,42 @@ export class RealbytePcManagerClient {
     const electronApi = (globalThis as any)?.window?.moneyApi?.realbyte;
     if (electronApi?.fetchTransactions) {
       return unwrapRealbyteArray(
-        await electronApi.fetchTransactions(this.phoneIp, this.port, startDate, endDate)
+        await electronApi.fetchTransactions(this.phoneIp, this.port, startDate, endDate, this.overrides)
       );
     }
-    const response = await this.fetchWithTimeout(
-      `${this.baseUrl}/ledger/select.do?start=${startDate}&end=${endDate}`,
+    const sep = this.overrides.ledgerPath.includes('?') ? '&' : '?';
+    const raw = await this.fetchJsonBrowserWithTimeout(
+      `http://${this.phoneIp}:${this.port}${this.overrides.ledgerPath}${sep}start=${startDate}&end=${endDate}`,
       15000
     );
-    if (!response.ok) throw new Error(`Failed to fetch transactions: ${response.statusText}`);
-    return unwrapRealbyteArray(await response.json());
+    return unwrapRealbyteArray(raw);
+  }
+
+  /**
+   * Fetches transactions across arbitrarily long periods in 3-month chunks with deduplication.
+   */
+  public async fetchTransactionsChunked(startDate: string, endDate: string): Promise<unknown[]> {
+    const chunks = splitDateRangeIntoChunks(startDate, endDate, 90);
+    if (chunks.length <= 1) {
+      return this.fetchTransactions(startDate, endDate);
+    }
+
+    const collected: unknown[] = [];
+    const seenKeys = new Set<string>();
+    for (const chunk of chunks) {
+      const rows = await this.fetchTransactions(chunk.startDate, chunk.endDate);
+      for (const row of rows) {
+        const obj = row as Record<string, unknown>;
+        const uid = extractRealbyteUid(obj);
+        if (uid !== undefined) {
+          const key = `uid:${uid}`;
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+        }
+        collected.push(row);
+      }
+    }
+    return collected;
   }
 }
 
