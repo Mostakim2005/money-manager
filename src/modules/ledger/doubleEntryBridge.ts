@@ -7,21 +7,27 @@ export function toLedgerAccount(
   prefix: 'Assets' | 'Liabilities' | 'Income' | 'Expenses',
   rawName: string
 ): string {
-  const clean = rawName
-    .replace(/[&]/g, 'And')
-    .replace(/[^a-zA-Z0-9:_-]/g, '')
+  const withWords = rawName
+    .replace(/[&]/g, ' And ')
+    .replace(/[_-]+/g, ' ')
+    .replace(/[^a-zA-Z0-9:\s]/g, '')
     .trim();
 
   if (
-    clean.startsWith('Assets:') ||
-    clean.startsWith('Liabilities:') ||
-    clean.startsWith('Income:') ||
-    clean.startsWith('Expenses:')
+    withWords.startsWith('Assets:') ||
+    withWords.startsWith('Liabilities:') ||
+    withWords.startsWith('Income:') ||
+    withWords.startsWith('Expenses:')
   ) {
-    return clean;
+    return withWords.replace(/\s+/g, '');
   }
 
-  return `${prefix}:${clean || 'General'}`;
+  const joined = withWords
+    .split(/\s+/)
+    .filter(Boolean)
+    .join('');
+
+  return `${prefix}:${joined || 'General'}`;
 }
 
 /**
@@ -139,10 +145,26 @@ export function verifyLedgerTrialBalance(
  */
 export function exportJournalToBeancount(
   entries: DoubleEntryJournalEntry[],
-  currency: string = 'BDT'
+  currency: string = 'BDT',
+  options?: { includeOpenDirectives?: boolean }
 ): string {
+  const openLines: string[] = [];
+  if (options?.includeOpenDirectives) {
+    const accountsSet = new Set<string>();
+    for (const e of entries) {
+      for (const p of e.postings) {
+        accountsSet.add(p.accountName.replace(/\s+/g, ''));
+      }
+    }
+    for (const acct of Array.from(accountsSet).sort()) {
+      openLines.push(`1970-01-01 open ${acct} ${currency}`);
+    }
+  }
+
   const blocks = entries.map((entry) => {
-    const escapedNarration = (entry.narration || 'Transaction').replace(/"/g, '\\"');
+    const escapedNarration = (entry.narration || 'Transaction')
+      .replace(/[\r\n]+/g, ' ')
+      .replace(/"/g, '\\"');
     const header = `${entry.date} * "${escapedNarration}"`;
 
     const postingLines = entry.postings.map((p) => {
@@ -161,5 +183,8 @@ export function exportJournalToBeancount(
     return [header, ...postingLines].join('\n');
   });
 
+  if (openLines.length > 0) {
+    return [openLines.join('\n'), ...blocks].join('\n\n');
+  }
   return blocks.join('\n\n');
 }

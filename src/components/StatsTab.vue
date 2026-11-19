@@ -108,7 +108,7 @@
         </div>
         <button
           type="button"
-          @click="store.budgetMode = 'cashflow_ledger'"
+          @click="store.setBudgetMode('cashflow_ledger')"
           class="text-[11px] text-slate-400 hover:text-slate-200 underline"
         >
           Cashflow view
@@ -203,7 +203,7 @@
       </div>
       <button
         type="button"
-        @click="store.budgetMode = 'envelope_allocation'"
+        @click="store.setBudgetMode('envelope_allocation')"
         class="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md whitespace-nowrap transition-all"
       >
         Enable Envelopes
@@ -346,11 +346,23 @@ const expenseCategorySumsMap = computed(() => {
   return map;
 });
 
+const activeMonthCount = computed(() => {
+  if (periodScope.value === 'month') return 1;
+  const distinctMonths = new Set<string>();
+  for (const t of store.transactions) {
+    if (t.date && t.date.length >= 7) {
+      distinctMonths.add(t.date.slice(0, 7));
+    }
+  }
+  return Math.max(1, distinctMonths.size);
+});
+
 const envelopeList = computed<EnvelopeRow[]>(() => {
+  const multiplier = activeMonthCount.value;
   return store.categories
     .filter(c => c.type === 'expense')
     .map(c => {
-      const allocated = c.budgetMonthlyAllocated || 0;
+      const allocated = (c.budgetMonthlyAllocated || 0) * multiplier;
       const spent = expenseCategorySumsMap.value.get(c.id) || 0;
       const remaining = allocated - spent;
       const percentage = allocated > 0 ? (spent / allocated) * 100 : (spent > 0 ? 100 : 0);

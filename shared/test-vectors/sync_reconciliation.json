@@ -1,0 +1,26 @@
+{
+  "description": "Shared golden test vectors for Realbyte multiset reconciliation, paired transfer collapsing, and balance protection",
+  "vectors": [
+    {
+      "id": "identical_same_day_rickshaw_rides",
+      "comment": "Fixes R7: Two legitimate identical 50 BDT transport rides on the same day with distinct UIDs must both be preserved, and re-syncing the same batch must skip both with 0 duplicates.",
+      "incomingTransactions": [
+        { "uid": 9001, "wdate": "2026-11-19", "utime": 1763540000, "do_type": "1", "money": 50, "asset_uid": 1, "category_uid": 104, "note": "Rickshaw" },
+        { "uid": 9002, "wdate": "2026-11-19", "utime": 1763543600, "do_type": "1", "money": 50, "asset_uid": 1, "category_uid": 104, "note": "Rickshaw" }
+      ],
+      "expectedPass1": { "inserted": 2, "skipped": 0, "totalCount": 2 },
+      "expectedPass2": { "inserted": 0, "skipped": 2, "totalCount": 2 }
+    },
+    {
+      "id": "paired_transfer_legs_do_type_3_and_4",
+      "comment": "Fixes R4: Realbyte paired Transfer Out (3) and Transfer In (4) rows must collapse into 1 canonical transfer transaction.",
+      "incomingTransactions": [
+        { "uid": 9101, "wdate": "2026-11-19", "utime": 1763550000, "do_type": "3", "money": 5000, "asset_uid": 3, "to_asset_uid": 4, "category_uid": 1, "note": "Bank to bKash" },
+        { "uid": 9102, "wdate": "2026-11-19", "utime": 1763550000, "do_type": "4", "money": 5000, "asset_uid": 4, "to_asset_uid": 3, "category_uid": 1, "note": "Bank to bKash" }
+      ],
+      "expectedNormalizedCount": 1,
+      "expectedType": "transfer",
+      "expectedAmountBDT": 5000
+    }
+  ]
+}

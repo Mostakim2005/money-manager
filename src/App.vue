@@ -40,8 +40,26 @@
           <span>{{ isLight ? '🌙 Dark' : '☀️ Light' }}</span>
         </button>
 
-        <div class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <div
+          class="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full border text-xs font-semibold"
+          :class="
+            store.syncStatus === 'Synced'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : store.syncStatus === 'Syncing'
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+          "
+        >
+          <span
+            class="w-2 h-2 rounded-full"
+            :class="
+              store.syncStatus === 'Synced'
+                ? 'bg-emerald-400 animate-pulse'
+                : store.syncStatus === 'Syncing'
+                  ? 'bg-amber-400 animate-ping'
+                  : 'bg-rose-400'
+            "
+          ></span>
           <span class="hidden sm:inline">{{ store.syncStatus }}</span>
         </div>
       </div>

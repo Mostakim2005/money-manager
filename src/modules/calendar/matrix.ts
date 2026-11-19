@@ -19,6 +19,7 @@ export function buildMonthCalendarMatrix(
       dayNumber: d,
       income: 0,
       expense: 0,
+      transferTotal: 0,
       net: 0,
       transactionCount: 0
     };
@@ -41,6 +42,8 @@ export function buildMonthCalendarMatrix(
         } else if (txn.type === 'expense') {
           daySummary.expense += txn.amount;
           totalExpense += txn.amount;
+        } else if (txn.type === 'transfer') {
+          daySummary.transferTotal = (daySummary.transferTotal || 0) + txn.amount;
         }
         daySummary.net = daySummary.income - daySummary.expense;
       }

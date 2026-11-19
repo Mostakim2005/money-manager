@@ -23,6 +23,61 @@ export function isLiabilityAccount(type: AccountType): boolean {
 }
 
 /**
+ * Rounds any currency amount to the nearest whole Taka (BDT integer).
+ */
+export function roundTaka(amount: number): number {
+  return Math.round(Number(amount || 0));
+}
+
+/**
+ * Computes the signed balance delta for a single account given its AccountType,
+ * the TransactionType (or transfer role), and the positive amount.
+ * - Asset accounts: income/transfer_in adds (+amount); expense/transfer_out subtracts (-amount).
+ * - Liability accounts (debt owed): expense/transfer_out increases debt (+amount); income/transfer_in reduces debt (-amount).
+ */
+export function computeAccountBalanceDelta(
+  accountType: AccountType,
+  role: 'income' | 'expense' | 'transfer_out' | 'transfer_in',
+  amount: number
+): number {
+  const wholeAmount = roundTaka(Math.abs(amount));
+  const isLiability = isLiabilityAccount(accountType);
+
+  if (role === 'income' || role === 'transfer_in') {
+    return isLiability ? -wholeAmount : wholeAmount;
+  }
+  // role === 'expense' || role === 'transfer_out'
+  return isLiability ? wholeAmount : -wholeAmount;
+}
+
+/**
+ * Applies or reverses a transaction's balance impact across an accounts array in place.
+ * factor = 1 to apply, factor = -1 to reverse.
+ */
+export function applyTransactionToAccounts(
+  accounts: Account[],
+  txn: Pick<Transaction, 'type' | 'amount' | 'accountId' | 'targetAccountId'>,
+  factor: 1 | -1 = 1
+): void {
+  const sourceAcc = accounts.find((a) => a.id === txn.accountId);
+  if (sourceAcc) {
+    const role = txn.type === 'transfer' ? 'transfer_out' : txn.type;
+    sourceAcc.balance = roundTaka(
+      sourceAcc.balance + computeAccountBalanceDelta(sourceAcc.type, role, txn.amount) * factor
+    );
+  }
+
+  if (txn.type === 'transfer' && txn.targetAccountId) {
+    const targetAcc = accounts.find((a) => a.id === txn.targetAccountId);
+    if (targetAcc) {
+      targetAcc.balance = roundTaka(
+        targetAcc.balance + computeAccountBalanceDelta(targetAcc.type, 'transfer_in', txn.amount) * factor
+      );
+    }
+  }
+}
+
+/**
  * Executes an atomic transfer between two accounts with proper balance updates
  * and validation across asset and liability accounts.
  */
@@ -58,20 +113,14 @@ export function executeAccountTransfer(
     throw new Error(`Target account '${targetAccountId}' not found`);
   }
 
-  // 2. Compute balance adjustments
-  // For source account:
-  // - Asset account: balance decreases (spending / sending money out)
-  // - Liability account: debt balance increases (borrowing / cash advance)
-  const sourceNewBalance = isLiabilityAccount(sourceAccount.type)
-    ? sourceAccount.balance + amount
-    : sourceAccount.balance - amount;
-
-  // For target account:
-  // - Asset account: balance increases (receiving funds)
-  // - Liability account: debt balance decreases (bill payment reducing amount owed)
-  const targetNewBalance = isLiabilityAccount(targetAccount.type)
-    ? targetAccount.balance - amount
-    : targetAccount.balance + amount;
+  // 2. Compute balance adjustments using canonical helper
+  const wholeAmount = roundTaka(amount);
+  const sourceNewBalance = roundTaka(
+    sourceAccount.balance + computeAccountBalanceDelta(sourceAccount.type, 'transfer_out', wholeAmount)
+  );
+  const targetNewBalance = roundTaka(
+    targetAccount.balance + computeAccountBalanceDelta(targetAccount.type, 'transfer_in', wholeAmount)
+  );
 
   const now = Date.now();
 
@@ -100,7 +149,7 @@ export function executeAccountTransfer(
     id: `transfer_${now}_${Math.random().toString(36).slice(2, 8)}`,
     date,
     time,
-    amount,
+    amount: wholeAmount,
     type: 'transfer',
     categoryId: 'transfer',
     accountId: sourceAccountId,

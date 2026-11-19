@@ -1,4 +1,8 @@
 import { RecurringSchedule, SplitAllocation, Transaction } from '../../types';
+import { computeTransactionFingerprint } from '../sync/syncCoordinator';
+import { roundTaka } from '../accounts/transferEngine';
+
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Advances a due date by a frequency interval with month-end date clamping.
@@ -8,6 +12,9 @@ export function advanceDueDate(
   dateISO: string,
   frequency: RecurringSchedule['frequency']
 ): string {
+  if (!ISO_DATE_REGEX.test(dateISO)) {
+    throw new Error(`Invalid due date format: '${dateISO}'. Expected YYYY-MM-DD.`);
+  }
   const [year, month, day] = dateISO.split('-').map(Number);
 
   if (frequency === 'weekly') {
@@ -56,10 +63,17 @@ export function splitTransaction(
     throw new Error('Split transaction requires at least 2 allocations');
   }
 
-  const totalSplitAmount = splits.reduce((sum, s) => sum + s.amount, 0);
-  if (Math.abs(totalSplitAmount - parentTxn.amount) > 0.01) {
+  for (const s of splits) {
+    if (typeof s.amount !== 'number' || isNaN(s.amount) || roundTaka(s.amount) <= 0) {
+      throw new Error('Each split allocation amount must be greater than zero');
+    }
+  }
+
+  const totalSplitAmount = splits.reduce((sum, s) => sum + roundTaka(s.amount), 0);
+  const parentWholeAmount = roundTaka(parentTxn.amount);
+  if (totalSplitAmount !== parentWholeAmount) {
     throw new Error(
-      `Sum of splits (${totalSplitAmount.toFixed(2)}) must equal parent amount (${parentTxn.amount.toFixed(2)})`
+      `Sum of splits (${totalSplitAmount}) must equal parent amount (${parentWholeAmount})`
     );
   }
 
@@ -78,7 +92,7 @@ export function splitTransaction(
       syncSource: parentTxn.syncSource,
       date: parentTxn.date,
       time: parentTxn.time,
-      amount: split.amount,
+      amount: roundTaka(split.amount),
       type: parentTxn.type,
       categoryId: split.categoryId,
       subcategoryId: parentTxn.subcategoryId,
@@ -103,10 +117,14 @@ export function mergeTransactions(txnsToMerge: Transaction[]): Transaction {
 
   const firstType = txnsToMerge[0].type;
   const firstAccount = txnsToMerge[0].accountId;
+  const firstTargetAccount = txnsToMerge[0].targetAccountId;
 
   for (const t of txnsToMerge) {
     if (t.type !== firstType || t.accountId !== firstAccount) {
       throw new Error('Cannot merge transactions with different types or accounts');
+    }
+    if (firstType === 'transfer' && t.targetAccountId !== firstTargetAccount) {
+      throw new Error('Cannot merge transfer transactions with different target accounts');
     }
   }
 
@@ -116,7 +134,7 @@ export function mergeTransactions(txnsToMerge: Transaction[]): Transaction {
   );
   const earliest = sorted[0];
 
-  const totalAmount = txnsToMerge.reduce((sum, t) => sum + t.amount, 0);
+  const totalAmount = roundTaka(txnsToMerge.reduce((sum, t) => sum + roundTaka(t.amount), 0));
 
   // Combine unique notes with " | "
   const uniqueNotes = Array.from(
@@ -133,19 +151,23 @@ export function mergeTransactions(txnsToMerge: Transaction[]): Transaction {
 
   const now = Date.now();
 
-  return {
+  const merged: Transaction = {
     ...earliest,
-    amount: Math.round(totalAmount * 100) / 100,
+    amount: totalAmount,
     note: combinedNote,
     description: combinedDescription,
     updatedAt: now,
   };
+  merged.fingerprint = computeTransactionFingerprint(merged);
+
+  return merged;
 }
 
 /**
  * Recurring & Scheduled Transactions Engine.
  * Evaluates active schedules against an evaluation date, generates transaction payloads,
  * and advances schedules to their next due dates.
+ * Enforces `autoPost !== false` and guards against malformed dates or infinite loops (Fixes H2).
  */
 export function processDueRecurringSchedules(
   schedules: RecurringSchedule[],
@@ -157,16 +179,31 @@ export function processDueRecurringSchedules(
   const updatedSchedules: RecurringSchedule[] = [];
   const generatedTransactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>[] = [];
 
+  if (!ISO_DATE_REGEX.test(asOfDateISO)) {
+    return { updatedSchedules: schedules.map(s => ({ ...s })), generatedTransactions: [] };
+  }
+
+  const MAX_ITERATIONS_PER_SCHEDULE = 60;
+
   for (const schedule of schedules) {
     const schedCopy: RecurringSchedule = { ...schedule };
-    let currentDueDate = schedCopy.nextDueDate;
 
-    while (currentDueDate <= asOfDateISO) {
+    // Fixes H2: Respect autoPost === false and guard against invalid nextDueDate
+    if (!schedCopy.autoPost || !ISO_DATE_REGEX.test(schedCopy.nextDueDate || '')) {
+      updatedSchedules.push(schedCopy);
+      continue;
+    }
+
+    let currentDueDate = schedCopy.nextDueDate;
+    let iterations = 0;
+
+    while (currentDueDate <= asOfDateISO && iterations < MAX_ITERATIONS_PER_SCHEDULE) {
+      iterations++;
       generatedTransactions.push({
         externalUid: `rec-${schedCopy.id}-${currentDueDate}`,
         date: currentDueDate,
         time: '09:00',
-        amount: schedCopy.amount,
+        amount: roundTaka(schedCopy.amount),
         type: schedCopy.type,
         categoryId: schedCopy.categoryId,
         accountId: schedCopy.accountId,
@@ -176,7 +213,9 @@ export function processDueRecurringSchedules(
         syncSource: 'local',
       });
 
-      currentDueDate = advanceDueDate(currentDueDate, schedCopy.frequency);
+      const nextDate = advanceDueDate(currentDueDate, schedCopy.frequency);
+      if (nextDate <= currentDueDate) break;
+      currentDueDate = nextDate;
     }
 
     schedCopy.nextDueDate = currentDueDate;

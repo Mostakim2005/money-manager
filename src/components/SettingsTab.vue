@@ -9,7 +9,7 @@
 
       <div class="grid grid-cols-2 gap-3 pt-2">
         <div
-          @click="store.budgetMode = 'cashflow_ledger'"
+          @click="store.setBudgetMode('cashflow_ledger')"
           class="p-4 rounded-xl border cursor-pointer transition-all space-y-1.5"
           :class="store.budgetMode === 'cashflow_ledger' ? 'border-rose-500 bg-rose-500/10' : 'border-slate-700 bg-slate-900/40 hover:bg-slate-700/30'"
         >
@@ -23,7 +23,7 @@
         </div>
 
         <div
-          @click="store.budgetMode = 'envelope_allocation'"
+          @click="store.setBudgetMode('envelope_allocation')"
           class="p-4 rounded-xl border cursor-pointer transition-all space-y-1.5"
           :class="store.budgetMode === 'envelope_allocation' ? 'border-indigo-500 bg-indigo-500/10' : 'border-slate-700 bg-slate-900/40 hover:bg-slate-700/30'"
         >
@@ -74,11 +74,13 @@
         <div class="grid grid-cols-3 gap-2">
           <input
             v-model="store.phoneIp"
+            @change="store.persistState()"
             placeholder="Phone IP (e.g. 192.168.1.105)"
             class="col-span-2 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-slate-500"
           />
           <input
             v-model.number="store.phonePort"
+            @change="store.persistState()"
             type="number"
             placeholder="Port"
             class="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono text-center tabular-nums focus:outline-none focus:border-slate-500"
@@ -93,7 +95,7 @@
       <div class="p-4 rounded-xl bg-slate-900/50 border border-slate-700/60 space-y-3">
         <div class="flex items-center justify-between flex-wrap gap-2">
           <div class="text-xs font-bold text-white flex items-center gap-2">
-            <span>☁️</span> Bridge 2: Google Drive / Mega Realbyte SQLite Vault (`money_android.sqlite`)
+            <span>☁️</span> Bridge 2: Google Drive / Mega Realbyte SQLite Vault (money_android.sqlite)
           </div>
           <div class="flex items-center gap-2">
             <button
@@ -110,6 +112,7 @@
         <p class="text-xs text-slate-400">Path to mirrored Realbyte backup database file on your PC:</p>
         <input
           v-model="store.cloudSyncPath"
+          @change="store.persistState()"
           class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-slate-500"
         />
 
@@ -378,7 +381,7 @@
           <button
             type="button"
             @click="copyBeancount"
-            class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:bg-slate-750 text-slate-200 text-[11px] font-semibold transition-all flex items-center gap-1"
+            class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-200 text-[11px] font-semibold transition-all flex items-center gap-1"
           >
             <span>{{ copySuccess ? '✓ Copied' : '📋 Copy' }}</span>
           </button>
@@ -550,6 +553,7 @@
             <label class="block text-xs font-medium text-slate-300 mb-1">Type</label>
             <select
               v-model="newSchedule.type"
+              @change="handleNewScheduleTypeChange"
               class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
             >
               <option value="expense">Expense</option>
@@ -789,7 +793,16 @@ async function handleVaultFileUpload(e: Event) {
     if (file.name.endsWith('.json')) {
       const text = await file.text();
       const json = JSON.parse(text);
-      await store.syncFromSqliteVault(json);
+      // Fixes C6: Detect Money Manager Full Vault Backup JSON vs Realbyte SQLite JSON Dump
+      if (
+        json &&
+        (json.schema === 'money-manager-vault-v1' ||
+          (Array.isArray(json.transactions) && Array.isArray(json.accounts) && !json.inoutcome && !json.INOUTCOME))
+      ) {
+        store.restoreFullBackupJson(json, 'merge');
+      } else {
+        await store.syncFromSqliteVault(json);
+      }
     } else if (file.name.endsWith('.sql')) {
       const text = await file.text();
       await store.syncFromSqliteVault(text);
@@ -841,14 +854,26 @@ function handleAddRule() {
 }
 
 function handlePostDueBills() {
-  const count = store.runDueRecurringSchedules('2026-12-05');
+  // Fixes H1: Use today's system date instead of hardcoded '2026-12-05'
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const count = store.runDueRecurringSchedules(todayISO);
   postResultMsg.value = count > 0
     ? `Successfully posted ${count} due recurring bills!`
-    : 'No bills are currently due as of 2026-12-05.';
+    : `No bills are currently due as of ${todayISO}.`;
   if (postMsgTimer) clearTimeout(postMsgTimer);
   postMsgTimer = setTimeout(() => {
     postResultMsg.value = '';
   }, 4000);
+}
+
+function handleNewScheduleTypeChange() {
+  const currentCat = store.categories.find(c => c.id === newSchedule.value.categoryId);
+  if (!currentCat || currentCat.type !== newSchedule.value.type) {
+    const firstMatching = store.categories.find(c => c.type === newSchedule.value.type);
+    if (firstMatching) {
+      newSchedule.value.categoryId = firstMatching.id;
+    }
+  }
 }
 
 function handleAddRecurring() {
@@ -872,13 +897,19 @@ function handleAddRecurring() {
   newSchedule.value.note = '';
 }
 
-function copyBeancount() {
-  navigator.clipboard.writeText(store.beancountExport);
-  copySuccess.value = true;
-  if (copyTimer) clearTimeout(copyTimer);
-  copyTimer = setTimeout(() => {
-    copySuccess.value = false;
-  }, 2000);
+async function copyBeancount() {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(store.beancountExport);
+      copySuccess.value = true;
+      if (copyTimer) clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => {
+        copySuccess.value = false;
+      }, 2000);
+    }
+  } catch {
+    // Ignore clipboard permission failure
+  }
 }
 
 function downloadLedgerCsv() {

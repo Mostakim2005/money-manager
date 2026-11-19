@@ -494,7 +494,7 @@
         <div v-if="editingTxn.type !== 'transfer'" class="grid grid-cols-2 gap-2">
           <button
             type="button"
-            @click="editType = 'expense'"
+            @click="switchEditType('expense')"
             class="py-2 rounded-xl text-xs font-bold border transition-all"
             :class="editType === 'expense' ? 'bg-rose-600 text-white border-rose-500 shadow-md' : 'bg-slate-950 text-slate-400 border-slate-800'"
           >
@@ -502,7 +502,7 @@
           </button>
           <button
             type="button"
-            @click="editType = 'income'"
+            @click="switchEditType('income')"
             class="py-2 rounded-xl text-xs font-bold border transition-all"
             :class="editType === 'income' ? 'bg-emerald-600 text-white border-emerald-500 shadow-md' : 'bg-slate-950 text-slate-400 border-slate-800'"
           >
@@ -531,10 +531,10 @@
           </div>
         </div>
 
-        <!-- Account & Category -->
+        <!-- Account & Category / Target Account -->
         <div class="grid grid-cols-2 gap-2">
           <div>
-            <label class="block text-[10px] text-slate-400 mb-1">Account</label>
+            <label class="block text-[10px] text-slate-400 mb-1">{{ editingTxn.type === 'transfer' ? 'From Account' : 'Account' }}</label>
             <select
               v-model="editAccountId"
               class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
@@ -559,16 +559,41 @@
               </option>
             </select>
           </div>
+          <div v-else>
+            <label class="block text-[10px] text-slate-400 mb-1">To Target Account</label>
+            <select
+              v-model="editTargetAccountId"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            >
+              <option
+                v-for="acc in store.accounts.filter(a => a.id !== editAccountId)"
+                :key="acc.id"
+                :value="acc.id"
+              >
+                {{ acc.name }}
+              </option>
+            </select>
+          </div>
         </div>
 
-        <!-- Note -->
-        <div>
-          <label class="block text-[10px] text-slate-400 mb-1">Note / Description</label>
-          <input
-            v-model="editNote"
-            placeholder="Transaction note"
-            class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
-          />
+        <!-- Payee & Note -->
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Payee / Description</label>
+            <input
+              v-model="editDescription"
+              placeholder="Payee or merchant"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            />
+          </div>
+          <div>
+            <label class="block text-[10px] text-slate-400 mb-1">Note</label>
+            <input
+              v-model="editNote"
+              placeholder="Transaction note"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-slate-600"
+            />
+          </div>
         </div>
 
         <!-- Footer Actions -->
@@ -626,8 +651,21 @@ const editDate = ref('');
 const editType = ref<TransactionType>('expense');
 const editAmount = ref(0);
 const editAccountId = ref('');
+const editTargetAccountId = ref('');
 const editCategoryId = ref('');
+const editDescription = ref('');
 const editNote = ref('');
+
+function switchEditType(newType: 'expense' | 'income') {
+  editType.value = newType;
+  const currentCat = store.categories.find(c => c.id === editCategoryId.value);
+  if (!currentCat || currentCat.type !== newType) {
+    const firstMatching = store.categories.find(c => c.type === newType);
+    if (firstMatching) {
+      editCategoryId.value = firstMatching.id;
+    }
+  }
+}
 
 const filteredTransactions = computed(() => {
   if (!searchQuery.value.trim()) return store.transactions;
@@ -703,21 +741,31 @@ function openEditModal(txn: Transaction) {
   editType.value = txn.type;
   editAmount.value = txn.amount;
   editAccountId.value = txn.accountId;
+  editTargetAccountId.value = txn.targetAccountId || store.accounts.find(a => a.id !== txn.accountId)?.id || '';
   editCategoryId.value = txn.categoryId;
-  editNote.value = txn.note || txn.description || '';
+  editDescription.value = txn.description || '';
+  editNote.value = txn.note || '';
   showEditModal.value = true;
 }
 
 function handleSaveEdit() {
   if (!editingTxn.value) return;
+  const resolvedTargetAccountId =
+    editType.value === 'transfer'
+      ? (editTargetAccountId.value !== editAccountId.value
+          ? editTargetAccountId.value
+          : store.accounts.find(a => a.id !== editAccountId.value)?.id)
+      : undefined;
+
   store.editTransaction(editingTxn.value.id, {
     date: editDate.value,
     type: editType.value,
-    amount: editAmount.value,
+    amount: Math.round(editAmount.value),
     accountId: editAccountId.value,
-    categoryId: editCategoryId.value,
-    note: editNote.value,
-    description: editNote.value
+    targetAccountId: resolvedTargetAccountId,
+    categoryId: editType.value === 'transfer' ? 'transfer' : editCategoryId.value,
+    note: editNote.value || editDescription.value || undefined,
+    description: editDescription.value || editNote.value || undefined
   });
   showEditModal.value = false;
   editingTxn.value = null;
@@ -735,7 +783,7 @@ function openSplitModal(txn: Transaction) {
   const otherCat = store.categories.find(c => c.id !== txn.categoryId && c.type === txn.type);
   split2.value = {
     categoryId: otherCat ? otherCat.id : txn.categoryId,
-    amount: txn.amount - half,
+    amount: Math.round(txn.amount) - half,
     note: txn.note ? `${txn.note} (Part 2)` : 'Part 2'
   };
   showSplitModal.value = true;
@@ -743,7 +791,7 @@ function openSplitModal(txn: Transaction) {
 
 function autoBalanceSplit2() {
   if (!splitModalTxn.value) return;
-  const remaining = splitModalTxn.value.amount - split1.value.amount;
+  const remaining = Math.round(splitModalTxn.value.amount) - Math.round(split1.value.amount);
   if (remaining >= 0) {
     split2.value.amount = remaining;
   }
@@ -751,9 +799,16 @@ function autoBalanceSplit2() {
 
 function handleSaveSplit() {
   if (!splitModalTxn.value) return;
-  const sum = split1.value.amount + split2.value.amount;
-  if (sum !== splitModalTxn.value.amount) {
-    splitError.value = `Sum of parts (৳${sum}) must equal original amount (৳${splitModalTxn.value.amount}).`;
+  const part1 = Math.round(split1.value.amount);
+  const part2 = Math.round(split2.value.amount);
+  if (part1 <= 0 || part2 <= 0) {
+    splitError.value = 'Each split allocation amount must be greater than zero.';
+    return;
+  }
+  const sum = part1 + part2;
+  const parentWhole = Math.round(splitModalTxn.value.amount);
+  if (sum !== parentWhole) {
+    splitError.value = `Sum of parts (৳${sum}) must equal original amount (৳${parentWhole}).`;
     return;
   }
   if (!split1.value.categoryId || !split2.value.categoryId) {
@@ -764,12 +819,12 @@ function handleSaveSplit() {
   store.splitExistingTransaction(splitModalTxn.value.id, [
     {
       categoryId: split1.value.categoryId,
-      amount: split1.value.amount,
+      amount: part1,
       note: split1.value.note
     },
     {
       categoryId: split2.value.categoryId,
-      amount: split2.value.amount,
+      amount: part2,
       note: split2.value.note
     }
   ]);

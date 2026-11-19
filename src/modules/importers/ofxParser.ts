@@ -1,4 +1,5 @@
 import { Transaction } from '../../types';
+import { normalizeBankDate } from './csvParser';
 
 export interface ParsedOfxTransaction {
   fitId: string;
@@ -12,7 +13,7 @@ export interface ParsedOfxTransaction {
 
 /**
  * Normalizes an OFX date string (e.g. "20261105", "20261105120000", "20261105120000[0:GMT]")
- * into standard ISO "YYYY-MM-DD" format.
+ * or standard bank date ("05/11/2026", "05-Nov-2026") into standard ISO "YYYY-MM-DD" format.
  */
 export function normalizeOfxDate(rawDate?: string): string {
   if (!rawDate) {
@@ -25,6 +26,10 @@ export function normalizeOfxDate(rawDate?: string): string {
   const match = trimmed.match(/^(\d{4})(\d{2})(\d{2})/);
   if (match) {
     return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  const bankNorm = normalizeBankDate(trimmed);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(bankNorm)) {
+    return bankNorm;
   }
   const parsed = new Date(trimmed);
   if (!isNaN(parsed.getTime())) {

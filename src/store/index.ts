@@ -5,15 +5,25 @@ import {
   Category,
   SanchaypatraScheme,
   BudgetMode,
+  ThemeMode,
   Rule,
   SyncReconciliationReport,
   DoubleEntryJournalEntry,
   RecurringSchedule,
-  SplitAllocation
+  SplitAllocation,
+  FeatureFlags
 } from '../types';
 import { BANGLADESH_SANCHAYPATRA_SCHEMES } from '../modules/sanchaypatra/schemes';
-import { calculateSanchaypatraProfit, generatePayoutScheduleDates } from '../modules/sanchaypatra/calculator';
-import { executeAccountTransfer, isLiabilityAccount } from '../modules/accounts/transferEngine';
+import {
+  calculateSanchaypatraProfit,
+  generatePayoutScheduleDates,
+  addMonthsClampedISO
+} from '../modules/sanchaypatra/calculator';
+import {
+  executeAccountTransfer,
+  applyTransactionToAccounts,
+  roundTaka
+} from '../modules/accounts/transferEngine';
 import { applyRulesToTransaction } from '../modules/rules/engine';
 import { computeTransactionFingerprint, reconcileRealbyteSync } from '../modules/sync/syncCoordinator';
 import { createSQLiteConnection, parseRealbyteSqliteVault, RealbyteSQLiteDump } from '../modules/database/sqliteVault';
@@ -26,8 +36,7 @@ import { exportTransactionsToCsv, exportFullBackupJson } from '../modules/export
 import {
   splitTransaction,
   mergeTransactions,
-  processDueRecurringSchedules,
-  advanceDueDate
+  processDueRecurringSchedules
 } from '../modules/transactions/recurringAndSplit';
 import {
   generateDoubleEntryJournal,
@@ -37,6 +46,30 @@ import {
 
 const STORAGE_KEY = 'money_manager_persisted_state_v1';
 
+export function getLocalTodayISO(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
+  enableSanchaypatra: true,
+  enableEnvelopeBudgets: false,
+  enableVisualCharts: true,
+  enableSavingsGoals: true,
+  enableCreditCardEmi: true,
+  enableIouKhata: true,
+  enableMultiCurrency: false,
+  enableReceipts: false,
+  enableRulesAndRecurring: true,
+  enableBankImporters: true,
+  enableJsonVaultBackup: true,
+  enableDoubleEntry: false,
+  enablePrivacyMode: true
+};
+
 let syncQueue: Promise<unknown> = Promise.resolve();
 function withSyncLock<T>(task: () => Promise<T>): Promise<T> {
   const next = syncQueue.then(task, task);
@@ -45,145 +78,164 @@ function withSyncLock<T>(task: () => Promise<T>): Promise<T> {
 }
 
 export const useMoneyStore = defineStore('money', {
-  state: () => ({
-    activeTab: 'daily' as 'transactions' | 'daily' | 'accounts' | 'stats' | 'sanchaypatra' | 'settings',
-    themeMode: 'dark' as 'dark' | 'light',
-    budgetMode: 'cashflow_ledger' as BudgetMode,
-    selectedYear: 2026,
-    selectedMonth: 11, // November
-    selectedDate: '2026-11-07',
-    lastDeletedTransaction: null as Transaction | null,
+  state: () => {
+    const todayISO = getLocalTodayISO();
+    const [curYear, curMonth] = todayISO.split('-').map(Number);
 
-    // Sync configuration
-    cloudSyncPath: 'C:\\Users\\kazir\\Google Drive\\MoneyManager\\money_android.sqlite',
-    phoneIp: '192.168.1.105',
-    phonePort: 10000,
-    syncStatus: 'Synced' as 'Synced' | 'Syncing' | 'Disconnected',
-    lastSyncReport: null as SyncReconciliationReport | null,
+    return {
+      activeTab: 'daily' as 'transactions' | 'daily' | 'accounts' | 'stats' | 'sanchaypatra' | 'settings',
+      themeMode: 'dark' as ThemeMode,
+      budgetMode: 'cashflow_ledger' as BudgetMode,
+      privacyMode: false,
+      featureFlags: { ...DEFAULT_FEATURE_FLAGS } as FeatureFlags,
+      selectedYear: curYear || 2026,
+      selectedMonth: curMonth || 11,
+      selectedDate: todayISO,
+      lastDeletedTransaction: null as Transaction | null,
 
-    // Initial Bangladeshi Categories
-    categories: [
-      { id: 'groceries', externalUid: 'rb-uid-101', name: 'Groceries & Bazar', type: 'expense', color: '#10B981', budgetMonthlyAllocated: 15000 },
-      { id: 'rent', externalUid: 'rb-uid-102', name: 'House Rent', type: 'expense', color: '#EF4444', budgetMonthlyAllocated: 25000 },
-      { id: 'utilities', externalUid: 'rb-uid-103', name: 'Electricity & Gas', type: 'expense', color: '#F59E0B', budgetMonthlyAllocated: 4000 },
-      { id: 'transport', externalUid: 'rb-uid-104', name: 'Transport / Uber / Fuel', type: 'expense', color: '#6366F1', budgetMonthlyAllocated: 5000 },
-      { id: 'dining', externalUid: 'rb-uid-105', name: 'Dining & Snacks', type: 'expense', color: '#EC4899', budgetMonthlyAllocated: 6000 },
-      { id: 'medical', externalUid: 'rb-uid-106', name: 'Healthcare & Pharma', type: 'expense', color: '#14B8A6', budgetMonthlyAllocated: 3000 },
-      { id: 'salary', externalUid: 'rb-uid-201', name: 'Monthly Salary', type: 'income', color: '#3B82F6' },
-      { id: 'sanchay_return', externalUid: 'rb-uid-202', name: 'Sanchaypatra Profit', type: 'income', color: '#8B5CF6' }
-    ] as Category[],
+      // Sync configuration (neutral placeholder path — Fixes M7)
+      cloudSyncPath: 'money_android.sqlite',
+      phoneIp: '192.168.1.105',
+      phonePort: 10000,
+      syncStatus: 'Synced' as 'Synced' | 'Syncing' | 'Disconnected',
+      lastSyncReport: null as SyncReconciliationReport | null,
 
-    // Initial Bangladeshi Accounts
-    accounts: [
-      { id: 'cash_wallet', externalUid: 'rb-uid-1', name: 'Cash Wallet', type: 'cash', balance: 8500, currency: 'BDT', color: '#10B981' },
-      { id: 'sonali_bank', externalUid: 'rb-uid-2', name: 'Sonali Bank (Savings)', type: 'bank', balance: 145000, currency: 'BDT', accountNumber: '2050...102', color: '#3B82F6' },
-      { id: 'city_bank', externalUid: 'rb-uid-3', name: 'City Bank (Current)', type: 'bank', balance: 68000, currency: 'BDT', accountNumber: '1102...884', color: '#0EA5E9' },
-      { id: 'bkash', externalUid: 'rb-uid-4', name: 'bKash Personal', type: 'mfs', balance: 12450, currency: 'BDT', accountNumber: '017...889', color: '#E11D48' },
-      { id: 'nagad', externalUid: 'rb-uid-5', name: 'Nagad Wallet', type: 'mfs', balance: 4200, currency: 'BDT', accountNumber: '018...441', color: '#F97316' },
-      { id: 'city_amex', externalUid: 'rb-uid-6', name: 'City Bank Amex Card', type: 'credit_card', balance: 18500, currency: 'BDT', accountNumber: '3770...901', color: '#D97706' }
-    ] as Account[],
+      // Initial Bangladeshi Categories
+      categories: [
+        { id: 'groceries', externalUid: 'rb-uid-101', name: 'Groceries & Bazar', type: 'expense', color: '#10B981', budgetMonthlyAllocated: 15000 },
+        { id: 'rent', externalUid: 'rb-uid-102', name: 'House Rent', type: 'expense', color: '#EF4444', budgetMonthlyAllocated: 25000 },
+        { id: 'utilities', externalUid: 'rb-uid-103', name: 'Electricity & Gas', type: 'expense', color: '#F59E0B', budgetMonthlyAllocated: 4000 },
+        { id: 'transport', externalUid: 'rb-uid-104', name: 'Transport / Uber / Fuel', type: 'expense', color: '#6366F1', budgetMonthlyAllocated: 5000 },
+        { id: 'dining', externalUid: 'rb-uid-105', name: 'Dining & Snacks', type: 'expense', color: '#EC4899', budgetMonthlyAllocated: 6000 },
+        { id: 'medical', externalUid: 'rb-uid-106', name: 'Healthcare & Pharma', type: 'expense', color: '#14B8A6', budgetMonthlyAllocated: 3000 },
+        { id: 'salary', externalUid: 'rb-uid-201', name: 'Monthly Salary', type: 'income', color: '#3B82F6' },
+        { id: 'sanchay_return', externalUid: 'rb-uid-202', name: 'Sanchaypatra Profit', type: 'income', color: '#8B5CF6' }
+      ] as Category[],
 
-    // Active Sanchaypatra Certificates
-    sanchaypatraSchemes: [
-      {
-        id: 'sp-1',
-        name: '5-Year Bangladesh Sanchaypatra',
-        registrationNo: 'BD-SP-992014',
-        principal: 1000000,
-        issueDate: '2025-06-15',
-        maturityDate: '2030-06-15',
-        tenureYears: 5,
-        payoutFrequencyMonths: 6,
-        slabGrossRate: 0.1128,
-        aitRate: 0.10,
-        netPeriodicProfit: 50760,
-        linkedAccountId: 'sonali_bank',
-        nextPayoutDate: '2026-12-15'
-      },
-      {
-        id: 'sp-2',
-        name: 'Paribar Sanchaypatra',
-        registrationNo: 'BD-PAR-448190',
-        principal: 500000,
-        issueDate: '2026-01-10',
-        maturityDate: '2031-01-10',
-        tenureYears: 5,
-        payoutFrequencyMonths: 1,
-        slabGrossRate: 0.1152,
-        aitRate: 0.05,
-        netPeriodicProfit: 4560,
-        linkedAccountId: 'city_bank',
-        nextPayoutDate: '2026-11-10'
-      }
-    ] as SanchaypatraScheme[],
+      // Initial Bangladeshi Accounts
+      accounts: [
+        { id: 'cash_wallet', externalUid: 'rb-uid-1', name: 'Cash Wallet', type: 'cash', balance: 8500, currency: 'BDT', color: '#10B981' },
+        { id: 'sonali_bank', externalUid: 'rb-uid-2', name: 'Sonali Bank (Savings)', type: 'bank', balance: 145000, currency: 'BDT', accountNumber: '2050...102', color: '#3B82F6' },
+        { id: 'city_bank', externalUid: 'rb-uid-3', name: 'City Bank (Current)', type: 'bank', balance: 68000, currency: 'BDT', accountNumber: '1102...884', color: '#0EA5E9' },
+        { id: 'bkash', externalUid: 'rb-uid-4', name: 'bKash Personal', type: 'mfs', balance: 12450, currency: 'BDT', accountNumber: '017...889', color: '#E11D48' },
+        { id: 'nagad', externalUid: 'rb-uid-5', name: 'Nagad Wallet', type: 'mfs', balance: 4200, currency: 'BDT', accountNumber: '018...441', color: '#F97316' },
+        { id: 'city_amex', externalUid: 'rb-uid-6', name: 'City Bank Amex Card', type: 'credit_card', balance: 18500, currency: 'BDT', accountNumber: '3770...901', color: '#D97706' }
+      ] as Account[],
 
-    // Recurring Bills & Scheduled Income
-    recurringSchedules: [
-      {
-        id: 'rec-rent',
-        name: 'Monthly Apartment Rent',
-        amount: 25000,
-        type: 'expense',
-        categoryId: 'rent',
-        accountId: 'city_bank',
-        frequency: 'monthly',
-        nextDueDate: '2026-12-01',
-        autoPost: true,
-        note: 'Automated monthly rent schedule'
-      },
-      {
-        id: 'rec-desco',
-        name: 'DESCO Electricity & Titas Gas',
-        amount: 3800,
-        type: 'expense',
-        categoryId: 'utilities',
-        accountId: 'bkash',
-        frequency: 'monthly',
-        nextDueDate: '2026-11-15',
-        autoPost: true,
-        note: 'Monthly utility bill'
-      }
-    ] as RecurringSchedule[],
+      // Active Sanchaypatra Certificates
+      sanchaypatraSchemes: [
+        {
+          id: 'sp-1',
+          schemeDefId: 'bd_5yr',
+          name: '5-Year Bangladesh Sanchaypatra',
+          registrationNo: 'BD-SP-992014',
+          principal: 1000000,
+          issueDate: '2025-06-15',
+          maturityDate: '2030-06-15',
+          tenureYears: 5,
+          payoutFrequencyMonths: 6,
+          slabGrossRate: 0.1128,
+          aitRate: 0.10,
+          netPeriodicProfit: 50760,
+          linkedAccountId: 'sonali_bank',
+          nextPayoutDate: '2026-12-15',
+          status: 'active'
+        },
+        {
+          id: 'sp-2',
+          schemeDefId: 'paribar',
+          name: 'Paribar Sanchaypatra',
+          registrationNo: 'BD-PAR-448190',
+          principal: 500000,
+          issueDate: '2026-01-10',
+          maturityDate: '2031-01-10',
+          tenureYears: 5,
+          payoutFrequencyMonths: 1,
+          slabGrossRate: 0.1152,
+          aitRate: 0.05,
+          netPeriodicProfit: 4560,
+          linkedAccountId: 'city_bank',
+          nextPayoutDate: '2026-11-10',
+          status: 'active'
+        }
+      ] as SanchaypatraScheme[],
 
-    // Auto-categorization Rules (Actual Budget Engine)
-    rules: [
-      {
-        id: 'rule-unimart',
-        name: 'Supermarkets (Unimart / Shwapno / Meena) → Groceries',
-        enabled: true,
-        conditions: [{ field: 'note', operator: 'contains', value: 'unimart' }],
-        actions: [{ field: 'categoryId', value: 'groceries' }]
-      },
-      {
-        id: 'rule-uber',
-        name: 'Ride Share (Uber / Pathao / CNG) → Transport',
-        enabled: true,
-        conditions: [{ field: 'note', operator: 'contains', value: 'uber' }],
-        actions: [{ field: 'categoryId', value: 'transport' }]
-      },
-      {
-        id: 'rule-desco',
-        name: 'Utility Bills (DESCO / Titas / WASA) → Utilities',
-        enabled: true,
-        conditions: [{ field: 'note', operator: 'contains', value: 'desco' }],
-        actions: [{ field: 'categoryId', value: 'utilities' }]
-      }
-    ] as Rule[],
+      // Recurring Bills & Scheduled Income
+      recurringSchedules: [
+        {
+          id: 'rec-rent',
+          name: 'Monthly Apartment Rent',
+          amount: 25000,
+          type: 'expense',
+          categoryId: 'rent',
+          accountId: 'city_bank',
+          frequency: 'monthly',
+          nextDueDate: '2026-12-01',
+          autoPost: true,
+          note: 'Automated monthly rent schedule'
+        },
+        {
+          id: 'rec-desco',
+          name: 'DESCO Electricity & Titas Gas',
+          amount: 3800,
+          type: 'expense',
+          categoryId: 'utilities',
+          accountId: 'bkash',
+          frequency: 'monthly',
+          nextDueDate: '2026-11-15',
+          autoPost: true,
+          note: 'Monthly utility bill'
+        }
+      ] as RecurringSchedule[],
 
-    // Sample Transactions
-    transactions: [
-      { id: 't1', externalUid: 'rb-uid-5001', date: '2026-11-01', time: '10:00', amount: 85000, type: 'income', categoryId: 'salary', accountId: 'city_bank', note: 'Monthly Salary November', createdAt: 1762000000000, updatedAt: 1762000000000 },
-      { id: 't2', externalUid: 'rb-uid-5002', date: '2026-11-02', time: '12:30', amount: 25000, type: 'expense', categoryId: 'rent', accountId: 'city_bank', note: 'Apartment rent', createdAt: 1762086000000, updatedAt: 1762086000000 },
-      { id: 't3', externalUid: 'rb-uid-5003', date: '2026-11-03', time: '18:45', amount: 3500, type: 'expense', categoryId: 'groceries', accountId: 'bkash', note: 'Unimart bazar', createdAt: 1762172000000, updatedAt: 1762172000000 },
-      { id: 't4', externalUid: 'rb-uid-5004', date: '2026-11-04', time: '14:15', amount: 1200, type: 'expense', categoryId: 'transport', accountId: 'cash_wallet', note: 'CNG & fuel', createdAt: 1762258000000, updatedAt: 1762258000000 },
-      { id: 't5', externalUid: 'rb-uid-5005', date: '2026-11-05', time: '20:00', amount: 2800, type: 'expense', categoryId: 'dining', accountId: 'city_amex', note: 'Dinner with family', createdAt: 1762344000000, updatedAt: 1762344000000 },
-      { id: 't6', externalUid: 'rb-uid-5006', date: '2026-11-07', time: '11:00', amount: 4560, type: 'income', categoryId: 'sanchay_return', accountId: 'city_bank', note: 'Paribar Sanchaypatra monthly profit', createdAt: 1762516000000, updatedAt: 1762516000000 }
-    ] as Transaction[]
-  }),
+      // Auto-categorization Rules (Actual Budget Engine — comma-separated multi-keywords)
+      rules: [
+        {
+          id: 'rule-unimart',
+          name: 'Supermarkets (Unimart / Shwapno / Meena) → Groceries',
+          enabled: true,
+          matchMode: 'ANY',
+          conditions: [{ field: 'note', operator: 'contains', value: 'unimart, shwapno, meena, agora' }],
+          actions: [{ field: 'categoryId', value: 'groceries' }]
+        },
+        {
+          id: 'rule-uber',
+          name: 'Ride Share (Uber / Pathao / CNG) → Transport',
+          enabled: true,
+          matchMode: 'ANY',
+          conditions: [{ field: 'note', operator: 'contains', value: 'uber, pathao, cng, obhai' }],
+          actions: [{ field: 'categoryId', value: 'transport' }]
+        },
+        {
+          id: 'rule-desco',
+          name: 'Utility Bills (DESCO / Titas / WASA) → Utilities',
+          enabled: true,
+          matchMode: 'ANY',
+          conditions: [{ field: 'note', operator: 'contains', value: 'desco, titas, wasa, dpdc' }],
+          actions: [{ field: 'categoryId', value: 'utilities' }]
+        }
+      ] as Rule[],
+
+      // Sample Transactions
+      transactions: [
+        { id: 't1', externalUid: 'rb-uid-5001', date: '2026-11-01', time: '10:00', amount: 85000, type: 'income', categoryId: 'salary', accountId: 'city_bank', note: 'Monthly Salary November', createdAt: 1762000000000, updatedAt: 1762000000000 },
+        { id: 't2', externalUid: 'rb-uid-5002', date: '2026-11-02', time: '12:30', amount: 25000, type: 'expense', categoryId: 'rent', accountId: 'city_bank', note: 'Apartment rent', createdAt: 1762086000000, updatedAt: 1762086000000 },
+        { id: 't3', externalUid: 'rb-uid-5003', date: '2026-11-03', time: '18:45', amount: 3500, type: 'expense', categoryId: 'groceries', accountId: 'bkash', note: 'Unimart bazar', createdAt: 1762172000000, updatedAt: 1762172000000 },
+        { id: 't4', externalUid: 'rb-uid-5004', date: '2026-11-04', time: '14:15', amount: 1200, type: 'expense', categoryId: 'transport', accountId: 'cash_wallet', note: 'CNG & fuel', createdAt: 1762258000000, updatedAt: 1762258000000 },
+        { id: 't5', externalUid: 'rb-uid-5005', date: '2026-11-05', time: '20:00', amount: 2800, type: 'expense', categoryId: 'dining', accountId: 'city_amex', note: 'Dinner with family', createdAt: 1762344000000, updatedAt: 1762344000000 },
+        { id: 't6', externalUid: 'rb-uid-5006', date: '2026-11-07', time: '11:00', amount: 4560, type: 'income', categoryId: 'sanchay_return', accountId: 'city_bank', note: 'Paribar Sanchaypatra monthly profit', createdAt: 1762516000000, updatedAt: 1762516000000 }
+      ] as Transaction[]
+    };
+  },
 
   getters: {
     totalSanchaypatraPrincipal(state): number {
       return state.sanchaypatraSchemes.reduce((sum, s) => sum + s.principal, 0);
+    },
+    totalAssetAccountsBalance(state): number {
+      return state.accounts
+        .filter(a => a.type === 'asset')
+        .reduce((sum, a) => sum + a.balance, 0);
     },
     totalLiquidAssets(state): number {
       return state.accounts
@@ -195,8 +247,10 @@ export const useMoneyStore = defineStore('money', {
         .filter(a => a.type === 'credit_card' || a.type === 'liability')
         .reduce((sum, a) => sum + a.balance, 0);
     },
+    // Fixes H3: Includes type === 'asset' accounts alongside liquid assets and Sanchaypatra principal
+    // so Header Net Worth and AccountsTab Net Worth are 100% identical.
     totalNetWorth(): number {
-      return (this.totalLiquidAssets + this.totalSanchaypatraPrincipal) - this.totalLiabilities;
+      return (this.totalLiquidAssets + this.totalAssetAccountsBalance + this.totalSanchaypatraPrincipal) - this.totalLiabilities;
     },
     doubleEntryJournal(state): DoubleEntryJournalEntry[] {
       return generateDoubleEntryJournal(state.transactions, state.accounts, state.categories);
@@ -231,6 +285,12 @@ export const useMoneyStore = defineStore('money', {
             JSON.stringify({
               themeMode: this.themeMode,
               budgetMode: this.budgetMode,
+              privacyMode: this.privacyMode,
+              featureFlags: this.featureFlags,
+              cloudSyncPath: this.cloudSyncPath,
+              phoneIp: this.phoneIp,
+              phonePort: this.phonePort,
+              lastSyncReport: this.lastSyncReport,
               categories: this.categories,
               accounts: this.accounts,
               sanchaypatraSchemes: this.sanchaypatraSchemes,
@@ -257,7 +317,17 @@ export const useMoneyStore = defineStore('money', {
                 document.documentElement.setAttribute('data-theme', this.themeMode);
               }
             }
-            if (parsed.budgetMode) this.budgetMode = parsed.budgetMode;
+            if (parsed.budgetMode === 'cashflow_ledger' || parsed.budgetMode === 'envelope_allocation') {
+              this.budgetMode = parsed.budgetMode;
+            }
+            if (typeof parsed.privacyMode === 'boolean') this.privacyMode = parsed.privacyMode;
+            if (parsed.featureFlags && typeof parsed.featureFlags === 'object') {
+              this.featureFlags = { ...DEFAULT_FEATURE_FLAGS, ...parsed.featureFlags };
+            }
+            if (typeof parsed.cloudSyncPath === 'string') this.cloudSyncPath = parsed.cloudSyncPath;
+            if (typeof parsed.phoneIp === 'string') this.phoneIp = parsed.phoneIp;
+            if (typeof parsed.phonePort === 'number') this.phonePort = parsed.phonePort;
+            if (parsed.lastSyncReport) this.lastSyncReport = parsed.lastSyncReport;
             if (Array.isArray(parsed.categories)) this.categories = parsed.categories;
             if (Array.isArray(parsed.accounts)) this.accounts = parsed.accounts;
             if (Array.isArray(parsed.sanchaypatraSchemes)) this.sanchaypatraSchemes = parsed.sanchaypatraSchemes;
@@ -269,6 +339,65 @@ export const useMoneyStore = defineStore('money', {
       } catch {
         // Ignore invalid JSON
       }
+    },
+
+    setBudgetMode(mode: BudgetMode) {
+      this.budgetMode = mode;
+      this.featureFlags.enableEnvelopeBudgets = mode === 'envelope_allocation';
+      this.persistState();
+    },
+
+    updateSyncConfig(config: { phoneIp?: string; phonePort?: number; cloudSyncPath?: string }) {
+      if (config.phoneIp !== undefined) this.phoneIp = config.phoneIp.trim();
+      if (config.phonePort !== undefined) this.phonePort = Number(config.phonePort) || 10000;
+      if (config.cloudSyncPath !== undefined) this.cloudSyncPath = config.cloudSyncPath.trim();
+      this.persistState();
+    },
+
+    setFeatureFlag<K extends keyof FeatureFlags>(key: K, enabled: boolean) {
+      this.featureFlags[key] = enabled;
+      if (key === 'enableEnvelopeBudgets') {
+        this.budgetMode = enabled ? 'envelope_allocation' : 'cashflow_ledger';
+      }
+      this.persistState();
+    },
+
+    applyFeaturePreset(preset: 'realbyte_minimal' | 'full_suite') {
+      if (preset === 'realbyte_minimal') {
+        this.featureFlags = {
+          enableSanchaypatra: false,
+          enableEnvelopeBudgets: false,
+          enableVisualCharts: false,
+          enableSavingsGoals: false,
+          enableCreditCardEmi: false,
+          enableIouKhata: false,
+          enableMultiCurrency: false,
+          enableReceipts: false,
+          enableRulesAndRecurring: false,
+          enableBankImporters: false,
+          enableJsonVaultBackup: true,
+          enableDoubleEntry: false,
+          enablePrivacyMode: true
+        };
+        this.budgetMode = 'cashflow_ledger';
+      } else {
+        this.featureFlags = {
+          enableSanchaypatra: true,
+          enableEnvelopeBudgets: true,
+          enableVisualCharts: true,
+          enableSavingsGoals: true,
+          enableCreditCardEmi: true,
+          enableIouKhata: true,
+          enableMultiCurrency: true,
+          enableReceipts: true,
+          enableRulesAndRecurring: true,
+          enableBankImporters: true,
+          enableJsonVaultBackup: true,
+          enableDoubleEntry: true,
+          enablePrivacyMode: true
+        };
+      }
+      this.persistState();
     },
 
     toggleTheme() {
@@ -293,11 +422,18 @@ export const useMoneyStore = defineStore('money', {
       if (txn.externalUid && this.transactions.some(t => t.externalUid === txn.externalUid)) {
         return;
       }
-      if (txn.type === 'transfer' && txn.targetAccountId) {
+      // Fixes H8: Strictly validate transfer targetAccountId
+      if (txn.type === 'transfer') {
+        if (!txn.targetAccountId) {
+          throw new Error('Transfer transaction requires a targetAccountId');
+        }
+        if (txn.targetAccountId === txn.accountId) {
+          throw new Error('Source and target accounts must be different');
+        }
         const result = executeAccountTransfer(this.accounts, {
           sourceAccountId: txn.accountId,
           targetAccountId: txn.targetAccountId,
-          amount: txn.amount,
+          amount: roundTaka(txn.amount),
           date: txn.date,
           time: txn.time,
           note: txn.note || txn.description
@@ -316,6 +452,7 @@ export const useMoneyStore = defineStore('money', {
       const now = Date.now();
       const draftTxn: Transaction = {
         ...txn,
+        amount: roundTaka(txn.amount),
         id: 'tx-' + now + '-' + Math.random().toString(36).slice(2, 6),
         syncSource: txn.syncSource || 'local',
         createdAt: now,
@@ -326,17 +463,7 @@ export const useMoneyStore = defineStore('money', {
       ruledTxn.fingerprint = computeTransactionFingerprint(ruledTxn);
 
       this.transactions.unshift(ruledTxn);
-
-      const account = this.accounts.find(a => a.id === ruledTxn.accountId);
-      if (account) {
-        if (isLiabilityAccount(account.type)) {
-          if (ruledTxn.type === 'expense') account.balance += ruledTxn.amount;
-          else if (ruledTxn.type === 'income') account.balance -= ruledTxn.amount;
-        } else {
-          if (ruledTxn.type === 'income') account.balance += ruledTxn.amount;
-          else if (ruledTxn.type === 'expense') account.balance -= ruledTxn.amount;
-        }
-      }
+      applyTransactionToAccounts(this.accounts, ruledTxn, 1);
       this.persistState();
     },
 
@@ -345,28 +472,7 @@ export const useMoneyStore = defineStore('money', {
       if (idx === -1) return;
       const txn = this.transactions[idx];
 
-      // Reverse account balance impact
-      const sourceAcc = this.accounts.find(a => a.id === txn.accountId);
-      if (sourceAcc) {
-        if (txn.type === 'transfer') {
-          if (isLiabilityAccount(sourceAcc.type)) sourceAcc.balance -= txn.amount;
-          else sourceAcc.balance += txn.amount;
-        } else if (isLiabilityAccount(sourceAcc.type)) {
-          if (txn.type === 'expense') sourceAcc.balance -= txn.amount;
-          else if (txn.type === 'income') sourceAcc.balance += txn.amount;
-        } else {
-          if (txn.type === 'income') sourceAcc.balance -= txn.amount;
-          else if (txn.type === 'expense') sourceAcc.balance += txn.amount;
-        }
-      }
-
-      if (txn.type === 'transfer' && txn.targetAccountId) {
-        const targetAcc = this.accounts.find(a => a.id === txn.targetAccountId);
-        if (targetAcc) {
-          if (isLiabilityAccount(targetAcc.type)) targetAcc.balance += txn.amount;
-          else targetAcc.balance -= txn.amount;
-        }
-      }
+      applyTransactionToAccounts(this.accounts, txn, -1);
 
       this.lastDeletedTransaction = { ...txn };
       this.transactions.splice(idx, 1);
@@ -377,27 +483,7 @@ export const useMoneyStore = defineStore('money', {
       if (!this.lastDeletedTransaction) return false;
       const txn = { ...this.lastDeletedTransaction };
 
-      const sourceAcc = this.accounts.find(a => a.id === txn.accountId);
-      if (sourceAcc) {
-        if (txn.type === 'transfer') {
-          if (isLiabilityAccount(sourceAcc.type)) sourceAcc.balance += txn.amount;
-          else sourceAcc.balance -= txn.amount;
-        } else if (isLiabilityAccount(sourceAcc.type)) {
-          if (txn.type === 'expense') sourceAcc.balance += txn.amount;
-          else if (txn.type === 'income') sourceAcc.balance -= txn.amount;
-        } else {
-          if (txn.type === 'income') sourceAcc.balance += txn.amount;
-          else if (txn.type === 'expense') sourceAcc.balance -= txn.amount;
-        }
-      }
-
-      if (txn.type === 'transfer' && txn.targetAccountId) {
-        const targetAcc = this.accounts.find(a => a.id === txn.targetAccountId);
-        if (targetAcc) {
-          if (isLiabilityAccount(targetAcc.type)) targetAcc.balance -= txn.amount;
-          else targetAcc.balance += txn.amount;
-        }
-      }
+      applyTransactionToAccounts(this.accounts, txn, 1);
 
       this.transactions.unshift(txn);
       this.lastDeletedTransaction = null;
@@ -410,33 +496,27 @@ export const useMoneyStore = defineStore('money', {
       if (idx === -1) return;
       const oldTxn = this.transactions[idx];
 
-      // 1. Reverse oldTxn's balance impact
-      const oldSource = this.accounts.find(a => a.id === oldTxn.accountId);
-      if (oldSource) {
-        if (oldTxn.type === 'transfer') {
-          if (isLiabilityAccount(oldSource.type)) oldSource.balance -= oldTxn.amount;
-          else oldSource.balance += oldTxn.amount;
-        } else if (isLiabilityAccount(oldSource.type)) {
-          if (oldTxn.type === 'expense') oldSource.balance -= oldTxn.amount;
-          else if (oldTxn.type === 'income') oldSource.balance += oldTxn.amount;
-        } else {
-          if (oldTxn.type === 'income') oldSource.balance -= oldTxn.amount;
-          else if (oldTxn.type === 'expense') oldSource.balance += oldTxn.amount;
+      const nextType = updates.type ?? oldTxn.type;
+      const nextAccountId = updates.accountId ?? oldTxn.accountId;
+      const nextTargetAccountId = updates.targetAccountId !== undefined ? updates.targetAccountId : oldTxn.targetAccountId;
+
+      if (nextType === 'transfer') {
+        if (!nextTargetAccountId) {
+          throw new Error('Transfer transaction requires a targetAccountId');
+        }
+        if (nextTargetAccountId === nextAccountId) {
+          throw new Error('Source and target accounts must be different');
         }
       }
 
-      if (oldTxn.type === 'transfer' && oldTxn.targetAccountId) {
-        const oldTarget = this.accounts.find(a => a.id === oldTxn.targetAccountId);
-        if (oldTarget) {
-          if (isLiabilityAccount(oldTarget.type)) oldTarget.balance += oldTxn.amount;
-          else oldTarget.balance -= oldTxn.amount;
-        }
-      }
+      // 1. Reverse oldTxn's balance impact
+      applyTransactionToAccounts(this.accounts, oldTxn, -1);
 
       // 2. Construct updatedTxn
       const updatedTxn: Transaction = {
         ...oldTxn,
         ...updates,
+        amount: updates.amount !== undefined ? roundTaka(updates.amount) : oldTxn.amount,
         id: oldTxn.id,
         createdAt: oldTxn.createdAt,
         updatedAt: Date.now()
@@ -444,27 +524,7 @@ export const useMoneyStore = defineStore('money', {
       updatedTxn.fingerprint = computeTransactionFingerprint(updatedTxn);
 
       // 3. Apply updatedTxn's balance impact
-      const newSource = this.accounts.find(a => a.id === updatedTxn.accountId);
-      if (newSource) {
-        if (updatedTxn.type === 'transfer') {
-          if (isLiabilityAccount(newSource.type)) newSource.balance += updatedTxn.amount;
-          else newSource.balance -= updatedTxn.amount;
-        } else if (isLiabilityAccount(newSource.type)) {
-          if (updatedTxn.type === 'expense') newSource.balance += updatedTxn.amount;
-          else if (updatedTxn.type === 'income') newSource.balance -= updatedTxn.amount;
-        } else {
-          if (updatedTxn.type === 'income') newSource.balance += updatedTxn.amount;
-          else if (updatedTxn.type === 'expense') newSource.balance -= updatedTxn.amount;
-        }
-      }
-
-      if (updatedTxn.type === 'transfer' && updatedTxn.targetAccountId) {
-        const newTarget = this.accounts.find(a => a.id === updatedTxn.targetAccountId);
-        if (newTarget) {
-          if (isLiabilityAccount(newTarget.type)) newTarget.balance -= updatedTxn.amount;
-          else newTarget.balance += updatedTxn.amount;
-        }
-      }
+      applyTransactionToAccounts(this.accounts, updatedTxn, 1);
 
       this.transactions[idx] = updatedTxn;
       this.persistState();
@@ -493,6 +553,7 @@ export const useMoneyStore = defineStore('money', {
     addAccount(acc: Omit<Account, 'id'>) {
       this.accounts.push({
         ...acc,
+        balance: roundTaka(acc.balance),
         id: 'acc-' + Date.now()
       });
       this.persistState();
@@ -507,6 +568,9 @@ export const useMoneyStore = defineStore('money', {
     },
 
     addRule(rule: Omit<Rule, 'id'>) {
+      if (!rule.conditions || rule.conditions.length === 0) {
+        throw new Error('A rule must contain at least one condition');
+      }
       this.rules.push({
         ...rule,
         id: 'rule-' + Date.now()
@@ -519,9 +583,31 @@ export const useMoneyStore = defineStore('money', {
       this.persistState();
     },
 
+    runRulesOnExistingTransactions(): number {
+      let updatedCount = 0;
+      this.transactions = this.transactions.map(tx => {
+        if (tx.type === 'transfer') return tx;
+        const ruled = applyRulesToTransaction(tx, this.rules);
+        if (
+          ruled.categoryId !== tx.categoryId ||
+          ruled.subcategoryId !== tx.subcategoryId ||
+          ruled.accountId !== tx.accountId
+        ) {
+          updatedCount++;
+          ruled.updatedAt = Date.now();
+          ruled.fingerprint = computeTransactionFingerprint(ruled);
+          return ruled;
+        }
+        return tx;
+      });
+      if (updatedCount > 0) this.persistState();
+      return updatedCount;
+    },
+
     addRecurringSchedule(sched: Omit<RecurringSchedule, 'id'>) {
       this.recurringSchedules.push({
         ...sched,
+        amount: roundTaka(sched.amount),
         id: 'rec-' + Date.now()
       });
       this.persistState();
@@ -533,7 +619,7 @@ export const useMoneyStore = defineStore('money', {
     },
 
     runDueRecurringSchedules(asOfDateISO?: string): number {
-      const targetDate = asOfDateISO || this.selectedDate;
+      const targetDate = asOfDateISO || getLocalTodayISO();
       const { updatedSchedules, generatedTransactions } = processDueRecurringSchedules(
         this.recurringSchedules,
         targetDate
@@ -557,30 +643,32 @@ export const useMoneyStore = defineStore('money', {
       const def = BANGLADESH_SANCHAYPATRA_SCHEMES.find(s => s.id === schemeData.schemeDefId);
       if (!def) return;
 
+      const wholePrincipal = roundTaka(schemeData.principal);
       const calc = calculateSanchaypatraProfit(
-        schemeData.principal,
+        wholePrincipal,
         def,
-        this.totalSanchaypatraPrincipal + schemeData.principal
+        this.totalSanchaypatraPrincipal + wholePrincipal
       );
 
       const schedule = generatePayoutScheduleDates(schemeData.issueDate, def.tenureYears, def.payoutIntervalMonths);
-      const maturity = new Date(schemeData.issueDate);
-      maturity.setFullYear(maturity.getFullYear() + def.tenureYears);
+      const maturityDate = addMonthsClampedISO(schemeData.issueDate, def.tenureYears * 12);
 
       const newScheme: SanchaypatraScheme = {
         id: 'sp-' + Date.now(),
+        schemeDefId: def.id,
         name: def.name,
         registrationNo: schemeData.registrationNo,
-        principal: schemeData.principal,
+        principal: wholePrincipal,
         issueDate: schemeData.issueDate,
-        maturityDate: maturity.toISOString().split('T')[0],
+        maturityDate,
         tenureYears: def.tenureYears,
         payoutFrequencyMonths: def.payoutIntervalMonths,
         slabGrossRate: calc.effectiveAnnualRate,
         aitRate: calc.aitRate,
         netPeriodicProfit: calc.netPeriodicPayoutBDT,
         linkedAccountId: schemeData.linkedAccountId,
-        nextPayoutDate: schedule[0] || schemeData.issueDate
+        nextPayoutDate: schedule[0] || schemeData.issueDate,
+        status: 'active'
       };
 
       this.sanchaypatraSchemes.push(newScheme);
@@ -591,86 +679,127 @@ export const useMoneyStore = defineStore('money', {
       const scheme = this.sanchaypatraSchemes.find(s => s.id === schemeId);
       if (!scheme) return;
 
+      // Fixes H6: Stop collecting payouts once matured or past maturityDate
+      if (scheme.status === 'matured' || scheme.status === 'encashed' || scheme.nextPayoutDate > scheme.maturityDate) {
+        scheme.status = 'matured';
+        this.persistState();
+        return;
+      }
+
       this.addTransaction({
         date: scheme.nextPayoutDate,
         time: '10:00',
-        amount: scheme.netPeriodicProfit,
+        amount: roundTaka(scheme.netPeriodicProfit),
         type: 'income',
         categoryId: 'sanchay_return',
         accountId: scheme.linkedAccountId,
         note: `${scheme.name} (${scheme.registrationNo}) profit payout`
       });
 
-      const freq =
-        scheme.payoutFrequencyMonths === 1
-          ? 'monthly'
-          : scheme.payoutFrequencyMonths === 3
-            ? 'quarterly'
-            : 'monthly';
-
-      if (scheme.payoutFrequencyMonths === 6) {
-        const step1 = advanceDueDate(scheme.nextPayoutDate, 'quarterly');
-        scheme.nextPayoutDate = advanceDueDate(step1, 'quarterly');
-      } else {
-        scheme.nextPayoutDate = advanceDueDate(scheme.nextPayoutDate, freq);
+      const nextDate = addMonthsClampedISO(scheme.nextPayoutDate, scheme.payoutFrequencyMonths);
+      scheme.nextPayoutDate = nextDate;
+      if (nextDate > scheme.maturityDate) {
+        scheme.status = 'matured';
       }
       this.persistState();
     },
 
-    syncFromPcManager(overridePayload?: RawPcManagerPayload): Promise<SyncReconciliationReport> {
+    restoreFullBackupJson(
+      rawBackup: string | Record<string, any>,
+      mode: 'replace' | 'merge' = 'replace'
+    ): { restoredTransactions: number; restoredAccounts: number; restoredCategories: number } {
+      const parsed = typeof rawBackup === 'string' ? JSON.parse(rawBackup) : rawBackup;
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Invalid JSON backup payload');
+      }
+      const isMoneyManagerVault =
+        parsed.schema === 'money-manager-vault-v1' ||
+        (Array.isArray(parsed.transactions) && Array.isArray(parsed.accounts) && Array.isArray(parsed.categories));
+
+      if (!isMoneyManagerVault) {
+        throw new Error('Unrecognized backup schema: expected money-manager-vault-v1');
+      }
+
+      if (mode === 'replace') {
+        this.accounts = (parsed.accounts || []).map((a: Account) => ({ ...a, balance: roundTaka(a.balance) }));
+        this.categories = (parsed.categories || []).map((c: Category) => ({ ...c }));
+        this.transactions = (parsed.transactions || []).map((t: Transaction) => ({
+          ...t,
+          amount: roundTaka(t.amount),
+          fingerprint: t.fingerprint || computeTransactionFingerprint(t)
+        }));
+        if (Array.isArray(parsed.sanchaypatraSchemes)) {
+          this.sanchaypatraSchemes = parsed.sanchaypatraSchemes.map((s: SanchaypatraScheme) => ({ ...s }));
+        }
+        if (Array.isArray(parsed.rules)) {
+          this.rules = parsed.rules.map((r: Rule) => ({ ...r }));
+        }
+        if (Array.isArray(parsed.recurringSchedules)) {
+          this.recurringSchedules = parsed.recurringSchedules.map((s: RecurringSchedule) => ({ ...s }));
+        }
+      } else {
+        const reconciled = reconcileRealbyteSync(
+          {
+            transactions: this.transactions,
+            accounts: this.accounts,
+            categories: this.categories
+          },
+          {
+            transactions: parsed.transactions || [],
+            accounts: parsed.accounts || [],
+            categories: parsed.categories || []
+          },
+          'realbyte_sqlite_backup',
+          true
+        );
+        this.transactions = reconciled.transactions;
+        this.accounts = reconciled.accounts;
+        this.categories = reconciled.categories;
+        this.lastSyncReport = reconciled.report;
+      }
+
+      this.persistState();
+      return {
+        restoredTransactions: this.transactions.length,
+        restoredAccounts: this.accounts.length,
+        restoredCategories: this.categories.length
+      };
+    },
+
+    syncFromPcManager(
+      overridePayload?: RawPcManagerPayload,
+      options?: { startDate?: string; endDate?: string; dryRun?: boolean }
+    ): Promise<SyncReconciliationReport> {
       return withSyncLock(async () => {
         this.syncStatus = 'Syncing';
         try {
           let payload: RawPcManagerPayload;
+          const startDate = options?.startDate || `${this.selectedYear}-01-01`;
+          const endDate = options?.endDate || `${this.selectedYear}-12-31`;
+
           if (overridePayload) {
             payload = overridePayload;
           } else {
             const client = new RealbytePcManagerClient(this.phoneIp, this.phonePort);
             const reachable = await client.checkConnection();
-            if (reachable) {
-              const [accounts, categories, transactions] = await Promise.all([
-                client.fetchAccounts(),
-                client.fetchCategories(),
-                client.fetchTransactions(`${this.selectedYear}-01-01`, `${this.selectedYear}-12-31`)
-              ]);
-              payload = { accounts, categories, transactions };
-            } else {
-              payload = {
-                accounts: [
-                  { uid: 1, name: 'Cash Wallet', amount: 8500, currency: 'BDT', asset_type: 0 },
-                  { uid: 4, name: 'bKash Personal', amount: 12450, currency: 'BDT', asset_type: 1 }
-                ],
-                categories: [
-                  { uid: 101, name: 'Groceries & Bazar', do_type: '1' },
-                  { uid: 105, name: 'Dining & Snacks', do_type: '1' }
-                ],
-                transactions: [
-                  {
-                    uid: 5003,
-                    wdate: '2026-11-03',
-                    utime: 1762172000000,
-                    do_type: '1',
-                    money: 3500,
-                    asset_uid: 4,
-                    category_uid: 101,
-                    note: 'Unimart bazar'
-                  },
-                  {
-                    uid: 5007,
-                    wdate: '2026-11-06',
-                    utime: 1762430000000,
-                    do_type: '1',
-                    money: 650,
-                    asset_uid: 1,
-                    category_uid: 105,
-                    note: 'Evening Kacchi & Cha (Synced via PC Manager)'
-                  }
-                ]
-              };
+            // Fixes C1 & R2: Never inject fake sample data when Realbyte phone is unreachable!
+            if (!reachable) {
+              this.syncStatus = 'Disconnected';
+              throw new Error(
+                `Unable to reach Realbyte PC Manager at http://${this.phoneIp}:${this.phonePort}. Enable PC Manager on your phone over the same Wi-Fi network.`
+              );
             }
+            const [accounts, categories, transactions] = await Promise.all([
+              client.fetchAccounts(),
+              client.fetchCategories(),
+              client.fetchTransactions(startDate, endDate)
+            ]);
+            payload = { accounts, categories, transactions };
           }
 
           const normalized = normalizePcManagerData(payload);
+          // Fixes C2 & R8: Let reconcileRealbyteSync use authoritative account snapshots when present
+          // so account balances are never double-counted.
           const reconciled = reconcileRealbyteSync(
             {
               transactions: this.transactions,
@@ -680,15 +809,22 @@ export const useMoneyStore = defineStore('money', {
             normalized,
             'realbyte_pc_manager',
             true,
-            { adjustAccountBalances: true }
+            {
+              dryRun: options?.dryRun,
+              fetchedDateWindow: options?.startDate && options?.endDate ? { startDate, endDate } : undefined
+            }
           );
 
-          this.transactions = reconciled.transactions;
-          this.accounts = reconciled.accounts;
-          this.categories = reconciled.categories;
-          this.lastSyncReport = reconciled.report;
-          this.syncStatus = 'Synced';
-          this.persistState();
+          if (!options?.dryRun) {
+            this.transactions = reconciled.transactions;
+            this.accounts = reconciled.accounts;
+            this.categories = reconciled.categories;
+            this.lastSyncReport = reconciled.report;
+            this.syncStatus = 'Synced';
+            this.persistState();
+          } else {
+            this.syncStatus = 'Synced';
+          }
           return reconciled.report;
         } catch (err) {
           this.syncStatus = 'Disconnected';
@@ -723,8 +859,7 @@ export const useMoneyStore = defineStore('money', {
               },
               parsedVault,
               'realbyte_sqlite_backup',
-              pragmaCheck.walMode,
-              { adjustAccountBalances: true }
+              pragmaCheck.walMode
             );
           });
 

@@ -129,7 +129,7 @@
           <label class="block text-xs font-medium text-slate-300 mb-1">Deposit Profit To Bank Account</label>
           <select v-model="form.linkedAccountId" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white">
             <option v-for="acc in bankAccounts" :key="acc.id" :value="acc.id">
-              {{ acc.name }} (<span class="tabular-nums">৳{{ acc.balance.toLocaleString() }}</span>)
+              {{ acc.name }} (৳{{ acc.balance.toLocaleString() }})
             </option>
           </select>
         </div>

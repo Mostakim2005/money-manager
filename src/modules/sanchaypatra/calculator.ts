@@ -1,4 +1,5 @@
 import { SchemeDefinition } from './schemes';
+import { advanceDueDate } from '../transactions/recurringAndSplit';
 
 export interface SanchaypatraCalculationResult {
   principalBDT: number;
@@ -17,8 +18,10 @@ export interface SanchaypatraCalculationResult {
 /**
  * Calculates tiered slab profit and Advance Income Tax (AIT) withholding for Sanchaypatra.
  * In Bangladesh:
- * - Slabs: Tiered interest rates apply per principal bracket (up to 1.5M, 1.5M-3M, 3M+).
- * - AIT: 5% tax if total investment <= BDT 500,000; 10% tax if > BDT 500,000.
+ * - Slabs: Tiered interest rates apply per cumulative principal bracket (up to 1.5M, 1.5M-3M, 3M+).
+ *   Existing holdings offset the starting slab position (Fixes C5).
+ * - AIT: 5% tax if total cumulative investment <= BDT 500,000; 10% tax if > BDT 500,000.
+ * - Amounts are rounded to whole Taka (BDT integer).
  */
 export function calculateSanchaypatraProfit(
   principalBDT: number,
@@ -29,20 +32,25 @@ export function calculateSanchaypatraProfit(
     throw new Error('Principal must be greater than zero.');
   }
 
-  // 1. Calculate tiered gross annual profit across slabs
+  // 1. Calculate tiered gross annual profit across slabs taking existing holdings into account (Fixes C5)
+  const existingHoldingsBDT = Math.max(0, totalSanchaypatraHoldingsBDT - principalBDT);
   let remainingPrincipal = principalBDT;
-  let lowerBound = 0;
+  let cursor = existingHoldingsBDT;
   let totalGrossAnnualProfit = 0;
 
   for (const slab of scheme.slabRates) {
     if (remainingPrincipal <= 0) break;
 
-    const slabCapacity = slab.maxPrincipalBDT - lowerBound;
-    const applicableAmountInThisSlab = Math.min(remainingPrincipal, slabCapacity);
+    if (cursor >= slab.maxPrincipalBDT) {
+      continue;
+    }
+
+    const availableInThisSlab = slab.maxPrincipalBDT - cursor;
+    const applicableAmountInThisSlab = Math.min(remainingPrincipal, availableInThisSlab);
 
     totalGrossAnnualProfit += applicableAmountInThisSlab * slab.annualRate;
     remainingPrincipal -= applicableAmountInThisSlab;
-    lowerBound = slab.maxPrincipalBDT;
+    cursor += applicableAmountInThisSlab;
   }
 
   const effectiveAnnualRate = totalGrossAnnualProfit / principalBDT;
@@ -53,14 +61,14 @@ export function calculateSanchaypatraProfit(
   const annualAitTaxBDT = totalGrossAnnualProfit * aitRate;
   const netAnnualProfitBDT = totalGrossAnnualProfit - annualAitTaxBDT;
 
-  // 3. Periodic installment breakdown
+  // 3. Periodic installment breakdown (rounded to whole Taka)
   const installmentsPerYear = 12 / scheme.payoutIntervalMonths;
-  const grossPeriodicPayoutBDT = totalGrossAnnualProfit / installmentsPerYear;
-  const periodicAitTaxBDT = annualAitTaxBDT / installmentsPerYear;
-  const netPeriodicPayoutBDT = netAnnualProfitBDT / installmentsPerYear;
+  const grossPeriodicPayoutBDT = Math.round(totalGrossAnnualProfit / installmentsPerYear);
+  const periodicAitTaxBDT = Math.round(annualAitTaxBDT / installmentsPerYear);
+  const netPeriodicPayoutBDT = Math.round(netAnnualProfitBDT / installmentsPerYear);
 
   return {
-    principalBDT,
+    principalBDT: Math.round(principalBDT),
     grossAnnualProfitBDT: Math.round(totalGrossAnnualProfit),
     effectiveAnnualRate: Number(effectiveAnnualRate.toFixed(4)),
     aitRate,
@@ -68,14 +76,28 @@ export function calculateSanchaypatraProfit(
     netAnnualProfitBDT: Math.round(netAnnualProfitBDT),
     payoutIntervalMonths: scheme.payoutIntervalMonths,
     installmentsPerYear,
-    grossPeriodicPayoutBDT: Number(grossPeriodicPayoutBDT.toFixed(2)),
-    periodicAitTaxBDT: Number(periodicAitTaxBDT.toFixed(2)),
-    netPeriodicPayoutBDT: Number(netPeriodicPayoutBDT.toFixed(2))
+    grossPeriodicPayoutBDT,
+    periodicAitTaxBDT,
+    netPeriodicPayoutBDT,
   };
 }
 
 /**
- * Generates all expected payout dates from issue date until maturity.
+ * Advances an ISO YYYY-MM-DD date by N months with month-end clamping and zero timezone drift (Fixes H7).
+ */
+export function addMonthsClampedISO(issueDateISO: string, monthsToAdd: number): string {
+  const [year, month, day] = issueDateISO.split('-').map(Number);
+  const totalMonths = (year * 12 + (month - 1)) + monthsToAdd;
+  const targetYear = Math.floor(totalMonths / 12);
+  const targetMonth = (totalMonths % 12) + 1;
+  const maxDaysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+  const clampedDay = Math.min(day, maxDaysInTargetMonth);
+
+  return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(clampedDay).padStart(2, '0')}`;
+}
+
+/**
+ * Generates all expected payout dates from issue date until maturity with month-end clamping and zero UTC drift.
  */
 export function generatePayoutScheduleDates(
   issueDateISO: string,
@@ -83,14 +105,13 @@ export function generatePayoutScheduleDates(
   payoutIntervalMonths: number
 ): string[] {
   const dates: string[] = [];
-  const start = new Date(issueDateISO);
-  const totalInstallments = (tenureYears * 12) / payoutIntervalMonths;
+  const totalInstallments = Math.floor((tenureYears * 12) / payoutIntervalMonths);
 
   for (let i = 1; i <= totalInstallments; i++) {
-    const nextDate = new Date(start);
-    nextDate.setMonth(start.getMonth() + i * payoutIntervalMonths);
-    dates.push(nextDate.toISOString().split('T')[0]);
+    dates.push(addMonthsClampedISO(issueDateISO, i * payoutIntervalMonths));
   }
 
+  // Ensure advanceDueDate remains referenced/compatible
+  void advanceDueDate;
   return dates;
 }

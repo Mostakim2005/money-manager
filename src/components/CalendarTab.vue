@@ -243,7 +243,7 @@ function getDaySummary(d: number) {
 
 function isWeekend(d: number): boolean {
   const dayOfWeek = new Date(store.selectedYear, store.selectedMonth - 1, d).getDay();
-  return dayOfWeek === 0; // Sunday
+  return dayOfWeek === 5 || dayOfWeek === 6; // Friday & Saturday (Bangladesh standard)
 }
 
 function changeMonth(delta: number) {
@@ -276,8 +276,8 @@ function formatBDT(amount: number): string {
 }
 
 function formatCompact(amount: number): string {
-  if (amount >= 100000) return (amount / 100000).toFixed(1) + 'L';
-  if (amount >= 1000) return (amount / 1000).toFixed(0) + 'k';
-  return String(amount);
+  if (amount >= 100000) return (amount / 100000).toFixed(1).replace(/\.0$/, '') + 'L';
+  if (amount >= 1000) return (amount / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(Math.round(amount));
 }
 </script>

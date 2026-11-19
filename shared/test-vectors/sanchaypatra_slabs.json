@@ -1,0 +1,45 @@
+{
+  "description": "Shared golden test vectors for Sanchaypatra cumulative slab profit and AIT calculations (Whole Taka BDT)",
+  "vectors": [
+    {
+      "id": "paribar_first_1m",
+      "schemeId": "paribar",
+      "principalBDT": 1000000,
+      "totalHoldingsBDT": 1000000,
+      "expected": {
+        "grossAnnualProfitBDT": 115200,
+        "aitRate": 0.10,
+        "annualAitTaxBDT": 11520,
+        "netAnnualProfitBDT": 103680,
+        "netPeriodicPayoutBDT": 8640
+      }
+    },
+    {
+      "id": "paribar_cumulative_offset_1_5m_plus_1m",
+      "comment": "Fixes C5: User already holds 1.5M BDT and buys another 1.0M BDT (total 2.5M). The new 1.0M must be taxed and calculated entirely in the second slab (10.50%), not the first slab (11.52%).",
+      "schemeId": "paribar",
+      "principalBDT": 1000000,
+      "totalHoldingsBDT": 2500000,
+      "expected": {
+        "grossAnnualProfitBDT": 105000,
+        "aitRate": 0.10,
+        "annualAitTaxBDT": 10500,
+        "netAnnualProfitBDT": 94500,
+        "netPeriodicPayoutBDT": 7875
+      }
+    },
+    {
+      "id": "three_month_small_500k",
+      "schemeId": "three_month_profit",
+      "principalBDT": 500000,
+      "totalHoldingsBDT": 500000,
+      "expected": {
+        "grossAnnualProfitBDT": 55200,
+        "aitRate": 0.05,
+        "annualAitTaxBDT": 2760,
+        "netAnnualProfitBDT": 52440,
+        "netPeriodicPayoutBDT": 13110
+      }
+    }
+  ]
+}

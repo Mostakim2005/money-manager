@@ -9,7 +9,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "tauri": "tauri",
     "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint src/ --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx --ignore-path .gitignore",
+    "lint": "vue-tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {

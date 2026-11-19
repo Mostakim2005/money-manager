@@ -150,6 +150,29 @@ flowchart LR
 
 ---
 
+### [DECISION: PC-First-Electron-And-Whole-Taka-Integer-Precision] | Aliases: electron over tauri, whole taka rounding, no paisa decimals, multiset realbyte sync
+> **1-Line Summary:** Pivoted the Windows PC runtime to Electron + `better-sqlite3` with whole-Taka integer rounding (`roundTaka`) and 4-tier multiset Realbyte sync reconciliation.
+* **Decision Maker:** `[DECIDED BY: HUMAN]`
+* **Original User Intention:** Eliminate Rust/Tauri native bridge friction, WebView CORS failures against Realbyte's port 10000 HTTP server, and unnecessary sub-decimal (paisa/cent) complexity while ensuring zero-duplicate phone synchronization.
+* **Options Considered:**
+  * **Option A (Rejected - Sub-Decimal Paisa Multiplication & Empty Tauri WebView):** Multiplying all BDT amounts by 100 into paisa/cents and relying on browser `fetch()` inside a Tauri WebView. Rejected because Bangladeshi daily finance uses whole Taka, and browser `fetch()` fails on CORS against Realbyte's phone server.
+  * **Option B (Chosen - Electron + `better-sqlite3` + Whole-Taka Rounding + Multiset Reconciliation):** Store and compute all currency values in whole integer Taka (`Math.round(amount)`), route Realbyte Wi-Fi sync through Electron's Node Main Process, collapse paired `DO_TYPE` `3`/`4` transfer legs, and recompute fingerprints after foreign-key remapping.
+* **Visual Pivot Map (What Failed vs. What Works):**
+
+```mermaid
+flowchart LR
+    subgraph Rejected["❌ WebView Fetch + Paisa Cents (Rejected)"]
+        A1["Browser fetch() to Phone :10000"] --> A2["Blocked by CORS & pre-remap fingerprint duplicates"]
+        A3["Paisa * 100 Schema"] --> A4["Unnecessary sub-decimal clutter for BDT"]
+    end
+    subgraph Chosen["✅ PC-First Electron + Whole-Taka Sync (Chosen)"]
+        B1["Electron Node HTTP Proxy + better-sqlite3 WAL"] --> B2["Zero CORS, direct binary .sqlite reading"]
+        B3["Whole-Taka Integer Rounding + Post-Remap Multiset Sync"] --> B4["Zero duplicates & exact account balances"]
+    end
+```
+
+---
+
 ## 2. Do-Not-Touch Engineering Landmines (Traps)
 
 ### [TRAP: Raw-SQLite-Concurrency-And-Journal-Locking] | Aliases: sqlite locking, db corruption, wal mode, dual sync collision

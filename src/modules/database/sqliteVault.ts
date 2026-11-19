@@ -1,5 +1,6 @@
 import type { Transaction, Account, Category, TransactionType, AccountType } from '../../types';
 import { computeTransactionFingerprint } from '../sync/syncCoordinator';
+import { roundTaka } from '../accounts/transferEngine';
 
 export interface RealbyteRawInOutcomeRow {
   uid?: string | number;
@@ -238,12 +239,130 @@ export function inferAccountType(rawType?: string | number, name?: string): Acco
   return 'bank';
 }
 
-export function mapRealbyteInOutcomeRow(row: RealbyteRawInOutcomeRow): Transaction {
-  const uid = row.uid ?? row.UID ?? row.Z_PK ?? Math.floor(Math.random() * 1000000);
+export function normalizeEpochMs(val: string | number | undefined, fallbackMs: number = Date.now()): number {
+  if (val === undefined || val === null || val === '') return fallbackMs;
+  if (typeof val === 'number' || (!isNaN(Number(val)) && !String(val).includes('-') && !String(val).includes('/'))) {
+    const num = Number(val);
+    if (num <= 0 || isNaN(num)) return fallbackMs;
+    return num < 100000000000 ? num * 1000 : num;
+  }
+  const parsed = Date.parse(String(val).trim());
+  return isNaN(parsed) ? fallbackMs : parsed;
+}
+
+export function extractRealbyteUid(row: Record<string, unknown>): string | number | undefined {
+  const candidate =
+    row.uid ??
+    row.UID ??
+    row.Z_PK ??
+    row.id ??
+    row.ID ??
+    row.inoutcome_uid ??
+    row.INOUTCOME_UID ??
+    row.ZUID ??
+    row.zuid;
+  if (candidate !== undefined && candidate !== null && String(candidate).trim() !== '') {
+    return candidate as string | number;
+  }
+  return undefined;
+}
+
+export function collapseRealbyteTransferPairs<T extends Record<string, unknown>>(rows: T[]): T[] {
+  const result: T[] = [];
+  const consumedIndices = new Set<number>();
+
+  for (let i = 0; i < rows.length; i++) {
+    if (consumedIndices.has(i)) continue;
+    const row = rows[i];
+    const doType = String(row.do_type ?? row.DO_TYPE ?? '1');
+
+    if (doType === '3' || doType === '4') {
+      const wdate = String(row.wdate ?? row.WDATE ?? '');
+      const money = Math.abs(Number(row.money ?? row.MONEY ?? row.amount ?? 0));
+      const assetUid = String(row.asset_uid ?? row.ASSET_UID ?? row.account_uid ?? '');
+      const toAssetUid = String(row.to_asset_uid ?? row.TO_ASSET_UID ?? '');
+      const oppositeType = doType === '3' ? '4' : '3';
+
+      let partnerIdx = -1;
+      for (let j = i + 1; j < rows.length; j++) {
+        if (consumedIndices.has(j)) continue;
+        const cand = rows[j];
+        const candDoType = String(cand.do_type ?? cand.DO_TYPE ?? '');
+        if (candDoType !== oppositeType) continue;
+        const candWdate = String(cand.wdate ?? cand.WDATE ?? '');
+        const candMoney = Math.abs(Number(cand.money ?? cand.MONEY ?? cand.amount ?? 0));
+        const candAsset = String(cand.asset_uid ?? cand.ASSET_UID ?? cand.account_uid ?? '');
+        const candToAsset = String(cand.to_asset_uid ?? cand.TO_ASSET_UID ?? '');
+
+        const sameAmountAndDate = candWdate === wdate && Math.abs(candMoney - money) < 0.01;
+        const swappedAssets =
+          (assetUid && toAssetUid && candAsset === toAssetUid && candToAsset === assetUid) ||
+          (assetUid && candToAsset === assetUid) ||
+          (toAssetUid && candAsset === toAssetUid);
+
+        if (sameAmountAndDate && swappedAssets) {
+          partnerIdx = j;
+          break;
+        }
+      }
+
+      if (partnerIdx !== -1) {
+        consumedIndices.add(partnerIdx);
+        const outRow = doType === '3' ? row : rows[partnerIdx];
+        const inRow = doType === '4' ? row : rows[partnerIdx];
+        const sourceAsset = outRow.asset_uid ?? outRow.ASSET_UID ?? outRow.account_uid;
+        const targetAsset =
+          outRow.to_asset_uid ??
+          outRow.TO_ASSET_UID ??
+          inRow.asset_uid ??
+          inRow.ASSET_UID ??
+          inRow.account_uid;
+
+        result.push({
+          ...outRow,
+          do_type: '2',
+          DO_TYPE: '2',
+          asset_uid: sourceAsset,
+          ASSET_UID: sourceAsset,
+          to_asset_uid: targetAsset,
+          TO_ASSET_UID: targetAsset,
+        });
+        continue;
+      }
+
+      // Single unpaired leg 3 or 4: normalize into transfer
+      if (doType === '3') {
+        result.push({ ...row, do_type: '2', DO_TYPE: '2' });
+      } else {
+        // doType === '4' (Transfer In without matching Out row)
+        const src = row.to_asset_uid ?? row.TO_ASSET_UID ?? row.asset_uid ?? row.ASSET_UID;
+        const dst = row.asset_uid ?? row.ASSET_UID;
+        result.push({
+          ...row,
+          do_type: '2',
+          DO_TYPE: '2',
+          asset_uid: src,
+          ASSET_UID: src,
+          to_asset_uid: dst,
+          TO_ASSET_UID: dst,
+        });
+      }
+      continue;
+    }
+
+    result.push(row);
+  }
+
+  return result;
+}
+
+export function mapRealbyteInOutcomeRow(row: RealbyteRawInOutcomeRow, index: number = 0): Transaction {
+  const uid = extractRealbyteUid(row as Record<string, unknown>);
   const wdate = row.wdate ?? row.WDATE ?? Date.now();
   const utime = row.utime ?? row.UTIME ?? wdate;
   const doType = String(row.do_type ?? row.DO_TYPE ?? '1');
-  const money = Number(row.money ?? row.MONEY ?? 0);
+  const rawMoney = Number(row.money ?? row.MONEY ?? 0);
+  const money = Number.isInteger(rawMoney) ? Math.abs(rawMoney) : Math.abs(rawMoney);
   const assetUid = row.asset_uid ?? row.ASSET_UID ?? 1;
   const toAssetUid = row.to_asset_uid ?? row.TO_ASSET_UID;
   const categoryUid = row.category_uid ?? row.CATEGORY_UID ?? 1;
@@ -252,18 +371,22 @@ export function mapRealbyteInOutcomeRow(row: RealbyteRawInOutcomeRow): Transacti
   const description = String(row.description ?? row.DESCRIPTION ?? '').trim();
 
   const parsedDate = parseDateAndTime(wdate);
-  const type: TransactionType = doType === '0' ? 'income' : (doType === '2' ? 'transfer' : 'expense');
+  const type: TransactionType =
+    doType === '0' ? 'income' : doType === '2' || doType === '3' || doType === '4' ? 'transfer' : 'expense';
   const accountId = `rb-acc-${assetUid}`;
   const targetAccountId = toAssetUid ? `rb-acc-${toAssetUid}` : undefined;
   const categoryId = `rb-cat-${categoryUid}`;
+  const normalizedUtime = normalizeEpochMs(utime, parsedDate.timestamp);
+
+  const deterministicFallbackId = `rb-txn-noid-${parsedDate.date}-${roundTaka(money)}-${assetUid}-${categoryUid}-${index}`;
 
   const txn: Transaction = {
-    id: `rb-txn-${uid}`,
-    externalUid: `rb-uid-${uid}`,
+    id: uid !== undefined ? `rb-txn-${uid}` : deterministicFallbackId,
+    externalUid: uid !== undefined ? `rb-uid-${uid}` : undefined,
     syncSource: 'realbyte_sqlite_backup',
     date: parsedDate.date,
     time: parsedDate.time,
-    amount: Math.abs(money),
+    amount: money,
     type,
     accountId,
     targetAccountId,
@@ -272,7 +395,7 @@ export function mapRealbyteInOutcomeRow(row: RealbyteRawInOutcomeRow): Transacti
     note: note || undefined,
     description: description || undefined,
     createdAt: parsedDate.timestamp,
-    updatedAt: Number(utime) || parsedDate.timestamp,
+    updatedAt: normalizedUtime,
   };
 
   txn.fingerprint = computeTransactionFingerprint(txn);
@@ -554,8 +677,10 @@ export function parseRealbyteSqliteVault(input: string | Uint8Array | ArrayBuffe
     []
   ) as RealbyteRawCategoryRow[];
 
+  const collapsedInoutcome = collapseRealbyteTransferPairs(inoutcomeRows);
+
   return {
-    transactions: inoutcomeRows.map(mapRealbyteInOutcomeRow),
+    transactions: collapsedInoutcome.map((row, idx) => mapRealbyteInOutcomeRow(row, idx)),
     accounts: assetRows.map(mapRealbyteAssetRow),
     categories: categoryRows.map(mapRealbyteCategoryRow),
   };

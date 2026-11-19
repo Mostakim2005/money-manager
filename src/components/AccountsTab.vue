@@ -106,6 +106,7 @@
               <option value="cash">Cash Wallet</option>
               <option value="mfs">Mobile Wallet (bKash/Nagad)</option>
               <option value="credit_card">Credit Card</option>
+              <option value="liability">Loan / Liability</option>
               <option value="asset">Savings / Investment</option>
             </select>
           </div>

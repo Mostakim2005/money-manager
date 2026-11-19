@@ -35,6 +35,10 @@ export interface Account {
   balance: number;
   currency: string; // e.g. BDT
   accountNumber?: string;
+  creditLimit?: number;
+  billingDay?: number;
+  dueDay?: number;
+  archived?: boolean;
   color?: string;
   icon?: string;
   updatedAt?: number;
@@ -44,27 +48,31 @@ export interface Category {
   id: string;
   externalUid?: string; // Realbyte ZCATEGORY UID
   name: string;
+  parentId?: string;
   type: 'income' | 'expense';
   icon?: string;
   color?: string;
   subcategories?: string[];
   budgetMonthlyAllocated?: number; // Used when BudgetMode is 'envelope_allocation'
+  updatedAt?: number;
 }
 
 export interface SanchaypatraScheme {
   id: string;
+  schemeDefId?: string;
   name: string; // e.g., "5-Year Bangladesh Sanchaypatra"
   registrationNo: string;
-  principal: number; // e.g. 1,000,000 BDT
+  principal: number; // e.g. 1,000,000 BDT (Whole Taka)
   issueDate: string; // YYYY-MM-DD
   maturityDate: string; // YYYY-MM-DD
   tenureYears: number;
-  payoutFrequencyMonths: number; // 1 for monthly, 3 for quarterly, 6 for half-yearly
+  payoutFrequencyMonths: number; // 1 for monthly, 3 for quarterly, 6 for half-yearly, 12 for yearly
   slabGrossRate: number; // e.g. 0.1128 (11.28%)
   aitRate: number; // 0.05 (5%) or 0.10 (10%)
   netPeriodicProfit: number;
   linkedAccountId: string; // Bank account where profits are deposited
   nextPayoutDate: string;
+  status?: 'active' | 'matured' | 'encashed';
 }
 
 export interface DailySummary {
@@ -90,9 +98,10 @@ export interface Rule {
   id: string;
   name: string;
   enabled: boolean;
+  matchMode?: 'ALL' | 'ANY';
   conditions: {
     field: 'payee' | 'note' | 'amount' | 'accountId';
-    operator: 'contains' | 'equals' | 'greater_than' | 'less_than';
+    operator: 'contains' | 'equals' | 'greater_than' | 'less_than' | 'matches_any';
     value: string | number;
   }[];
   actions: {
@@ -107,9 +116,32 @@ export interface SyncReconciliationReport {
   insertedTransactions: number;
   updatedTransactions: number;
   skippedDuplicates: number;
+  deletedOnRemote?: number;
   mergedAccounts: number;
   mergedCategories: number;
   walModeVerified: boolean;
+  dryRun?: boolean;
+  previewDiff?: {
+    toInsert: Transaction[];
+    toUpdate: { before: Transaction; after: Transaction }[];
+    toDelete: Transaction[];
+  };
+}
+
+export interface FeatureFlags {
+  enableSanchaypatra: boolean;
+  enableEnvelopeBudgets: boolean;
+  enableVisualCharts: boolean;
+  enableSavingsGoals: boolean;
+  enableCreditCardEmi: boolean;
+  enableIouKhata: boolean;
+  enableMultiCurrency: boolean;
+  enableReceipts: boolean;
+  enableRulesAndRecurring: boolean;
+  enableBankImporters: boolean;
+  enableJsonVaultBackup: boolean;
+  enableDoubleEntry: boolean;
+  enablePrivacyMode: boolean;
 }
 
 export interface JournalPosting {
